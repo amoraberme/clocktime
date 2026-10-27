@@ -5,11 +5,12 @@ import { PLANS } from "@/config/plans";
 import { trialDaysLeft } from "@/lib/entitlements";
 import { switchCompanyAction } from "@/server/actions/session";
 import { requireContext } from "@/server/context";
+import { employeeScopeWhere } from "@/server/scope";
 
 export default async function ManagerLayout({ children }: { children: React.ReactNode }) {
   const ctx = await requireContext("MANAGER");
   const openExceptions = ctx.can("exceptions")
-    ? await ctx.db.timeException.count({ where: { status: "OPEN" } })
+    ? await ctx.db.timeException.count({ where: { status: "OPEN", employee: employeeScopeWhere(ctx) } })
     : 0;
   const nav = MANAGER_NAV.filter((i) => !i.adminOnly || ctx.isAdmin).map((i) => ({
     ...i,

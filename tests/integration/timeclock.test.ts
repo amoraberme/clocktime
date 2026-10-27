@@ -32,15 +32,21 @@ describe("time clock", () => {
     await punch(actor, {
       action: "CLOCK_IN",
       source: "MOBILE",
+      offline: true,
       at: minutesAgo(300),
       lat: SITE.latitude,
       lng: SITE.longitude,
     });
     expect((await getClockState(actor)).status).toBe("in");
-    await punch(actor, { action: "BREAK_START", source: "MOBILE", at: minutesAgo(200) });
+    await punch(actor, { action: "BREAK_START", source: "MOBILE", offline: true, at: minutesAgo(200) });
     expect((await getClockState(actor)).status).toBe("break");
-    await punch(actor, { action: "BREAK_END", source: "MOBILE", at: minutesAgo(140) });
-    const out = await punch(actor, { action: "CLOCK_OUT", source: "MOBILE", at: minutesAgo(0) });
+    await punch(actor, { action: "BREAK_END", source: "MOBILE", offline: true, at: minutesAgo(140) });
+    const out = await punch(actor, {
+      action: "CLOCK_OUT",
+      source: "MOBILE",
+      offline: true,
+      at: minutesAgo(0),
+    });
     const entry = await prisma.timeEntry.findUniqueOrThrow({
       where: { id: out.entryId },
       include: { breaks: true },
@@ -137,10 +143,49 @@ describe("time clock", () => {
   it("rejects punches from the future or too far in the past", async () => {
     const { actor } = await setup();
     await expect(
-      punch(actor, { action: "CLOCK_IN", source: "MOBILE", at: new Date(Date.now() + 3600_000) }),
+      punch(actor, {
+        action: "CLOCK_IN",
+        source: "MOBILE",
+        offline: true,
+        at: new Date(Date.now() + 3600_000),
+      }),
     ).rejects.toThrow(/future/);
     await expect(
-      punch(actor, { action: "CLOCK_IN", source: "MOBILE", at: minutesAgo(5 * 24 * 60) }),
+      punch(actor, { action: "CLOCK_IN", source: "MOBILE", offline: true, at: minutesAgo(5 * 24 * 60) }),
     ).rejects.toThrow(/3 days/);
+  });
+
+  it("uses the server clock for live punches", async () => {
+    const { actor } = await setup();
+    const r = await punch(actor, { action: "CLOCK_IN", source: "MOBILE", at: minutesAgo(120) });
+    expect(Math.abs(r.at.getTime() - Date.now())).toBeLessThan(5000);
+  });
+
+  it("only lets automatic punches clock out after leaving an auto clock-out site", async () => {
+    const { actor, location } = await setup();
+    await expect(punch(actor, { action: "CLOCK_IN", source: "AUTO" })).rejects.toThrow(/Automatic/);
+    await prisma.location.update({ where: { id: location.id }, data: { autoClockOut: true } });
+    await punch(actor, { action: "CLOCK_IN", source: "MOBILE", lat: SITE.latitude, lng: SITE.longitude });
+    await expect(
+      punch(actor, { action: "CLOCK_OUT", source: "AUTO", lat: SITE.latitude, lng: SITE.longitude }),
+    ).rejects.toThrow(/outside the site/);
+    await expect(
+      punch(actor, { action: "CLOCK_OUT", source: "AUTO", lat: SITE.latitude + 0.05, lng: SITE.longitude }),
+    ).resolves.toBeTruthy();
+  });
+
+  it("rejects punches inside a finalized pay period", async () => {
+    const { actor, company } = await setup();
+    const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+    await prisma.payRun.create({
+      data: {
+        companyId: company.id,
+        periodStart: new Date(today.getTime() - 7 * 86_400_000),
+        periodEnd: new Date(today.getTime() + 86_400_000),
+        payDate: today,
+        status: "FINALIZED",
+      },
+    });
+    await expect(punch(actor, { action: "CLOCK_IN", source: "MOBILE" })).rejects.toThrow(/finalized/);
   });
 });

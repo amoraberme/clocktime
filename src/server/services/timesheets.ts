@@ -11,6 +11,7 @@ import {
   payPeriodFor,
   startOfDay,
   utcDateToKey,
+  weekday,
   type PayPeriod,
 } from "@/lib/time";
 import type { AppContext } from "../context";
@@ -93,7 +94,8 @@ export async function loadPayInputs(
   const companyId = ctx.company.id;
   const lookback = addDays(period.start, -7);
   const [holidays, premiums, otRows, leaveRows, priorEntries] = await Promise.all([
-    loadHolidays(companyId, lookback, period.end),
+    // Look past the period end so a night shift on the last day still sees a holiday after midnight.
+    loadHolidays(companyId, lookback, addDays(period.end, 3)),
     loadPremiums(),
     ctx.settings.overtimeRequiresApproval && ctx.can("overtime")
       ? prisma.overtimeRequest.findMany({
@@ -195,10 +197,26 @@ export function computeEmployeePeriod(
       unworkedSpecialDayPaid: ctx.settings.unworkedSpecialDayPaid,
     },
     approvedOvertime: inputs.approvedOt ? (inputs.approvedOt.get(employee.id) ?? new Map()) : undefined,
-    paidLeave: inputs.paidLeave.get(employee.id),
+    paidLeave: workingDaysOnly(inputs.paidLeave.get(employee.id), employee.restDays, inputs.holidays),
     presentDates: inputs.presentDates.get(employee.id) ?? new Set(),
   });
   return { hours, gross };
+}
+
+/** Paid leave covers working days only, matching how requestLeave counts days against the balance. */
+export function workingDaysOnly(
+  leave: Map<string, number> | undefined,
+  restDays: number[],
+  holidays: Map<string, HolidayKind[]>,
+) {
+  if (!leave) return leave;
+  const out = new Map<string, number>();
+  for (const [d, v] of leave) {
+    if (restDays.includes(weekday(d))) continue;
+    if ((holidays.get(d) ?? []).some((h) => h !== "SPECIAL_WORKING")) continue;
+    out.set(d, v);
+  }
+  return out;
 }
 
 /** Today in the company time zone, used to avoid counting future days as absences. */

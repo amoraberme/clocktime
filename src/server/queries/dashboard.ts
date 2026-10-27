@@ -3,6 +3,7 @@ import { dailyRate } from "@/lib/pay/gross";
 import { elapsedMinutes } from "@/lib/pay/hours";
 import { addDays, dateKey, startOfDay } from "@/lib/time";
 import type { AppContext } from "../context";
+import { employeeScopeWhere } from "../scope";
 
 export async function dashboardData(ctx: AppContext) {
   const tz = ctx.company.timezone;
@@ -10,9 +11,7 @@ export async function dashboardData(ctx: AppContext) {
   const dayStart = startOfDay(today, tz);
   const dayEnd = startOfDay(addDays(today, 1), tz);
   const scope = ctx.managedLocationIds ? { locationId: { in: ctx.managedLocationIds } } : {};
-  const empScope = ctx.managedLocationIds
-    ? { locations: { some: { locationId: { in: ctx.managedLocationIds } } } }
-    : {};
+  const empScope = employeeScopeWhere(ctx);
   const now = new Date();
 
   const [employees, entries, shifts, pendingLeave, pendingSwaps, pendingOt, openExceptions, staleOpen] =
@@ -32,10 +31,16 @@ export async function dashboardData(ctx: AppContext) {
         include: { location: { select: { name: true } } },
         orderBy: { startAt: "asc" },
       }),
-      ctx.can("leave") ? ctx.db.leaveRequest.count({ where: { status: "PENDING" } }) : 0,
-      ctx.can("shiftSwaps") ? ctx.db.shiftSwapRequest.count({ where: { status: "PENDING_MANAGER" } }) : 0,
-      ctx.can("overtime") ? ctx.db.overtimeRequest.count({ where: { status: "PENDING" } }) : 0,
-      ctx.can("exceptions") ? ctx.db.timeException.count({ where: { status: "OPEN" } }) : 0,
+      ctx.can("leave") ? ctx.db.leaveRequest.count({ where: { status: "PENDING", employee: empScope } }) : 0,
+      ctx.can("shiftSwaps")
+        ? ctx.db.shiftSwapRequest.count({ where: { status: "PENDING_MANAGER", requester: empScope } })
+        : 0,
+      ctx.can("overtime")
+        ? ctx.db.overtimeRequest.count({ where: { status: "PENDING", employee: empScope } })
+        : 0,
+      ctx.can("exceptions")
+        ? ctx.db.timeException.count({ where: { status: "OPEN", employee: empScope } })
+        : 0,
       ctx.db.timeEntry.count({
         where: {
           ...scope,

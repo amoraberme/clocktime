@@ -43,12 +43,28 @@ describe("exception detection", () => {
     const r = await punch(actor, {
       action: "CLOCK_IN",
       source: "MOBILE",
+      offline: true,
       at: atMinute(today, 8 * 60 + 20, TZ),
     });
     expect((await prisma.timeEntry.findUnique({ where: { id: r.entryId } }))?.shiftId).toBe(shift.id);
-    await punch(actor, { action: "BREAK_START", source: "MOBILE", at: atMinute(today, 12 * 60, TZ) });
-    await punch(actor, { action: "BREAK_END", source: "MOBILE", at: atMinute(today, 13 * 60 + 30, TZ) });
-    await punch(actor, { action: "CLOCK_OUT", source: "MOBILE", at: atMinute(today, 20 * 60, TZ) });
+    await punch(actor, {
+      action: "BREAK_START",
+      source: "MOBILE",
+      offline: true,
+      at: atMinute(today, 12 * 60, TZ),
+    });
+    await punch(actor, {
+      action: "BREAK_END",
+      source: "MOBILE",
+      offline: true,
+      at: atMinute(today, 13 * 60 + 30, TZ),
+    });
+    await punch(actor, {
+      action: "CLOCK_OUT",
+      source: "MOBILE",
+      offline: true,
+      at: atMinute(today, 20 * 60, TZ),
+    });
     await detectOnPunch(t.company.id, emp.id, r.entryId);
     await detectOnPunch(t.company.id, emp.id, r.entryId); // idempotent
     const types = (await prisma.timeException.findMany({ where: { employeeId: emp.id } }))

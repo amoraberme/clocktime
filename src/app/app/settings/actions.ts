@@ -117,6 +117,16 @@ export async function deleteCompanyAction(confirmName: string) {
       await storage()
         .delete(f.payslipKey!)
         .catch(() => {});
+    // Recorded at platform level (no companyId) so the entry survives the company's deletion.
+    await writeAudit(
+      { ...actorFrom(ctx), companyId: null },
+      {
+        action: "company.delete",
+        entityType: "Company",
+        entityId: ctx.company.id,
+        before: { name: ctx.company.name, slug: ctx.company.slug },
+      },
+    );
     await prisma.company.delete({ where: { id: ctx.company.id } });
     await prisma.user.update({ where: { id: ctx.user.id }, data: { activeCompanyId: null } });
     console.info(`company ${ctx.company.id} deleted by ${ctx.user.email}`);

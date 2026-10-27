@@ -32,6 +32,7 @@ export const POST = apiRoute("punch", async (ctx, req) => {
     {
       action: b.action,
       at: b.at ? new Date(b.at) : undefined,
+      offline: !!b.at,
       clientId: b.clientId,
       source: "API",
       locationId: b.locationId,

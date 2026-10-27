@@ -5,6 +5,7 @@ import { fullName } from "@/lib/utils";
 import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import { requireFeature, type AppContext } from "../context";
+import { assertEmployeeInScope, assertNotSelf } from "../scope";
 import { notify, notifyManagers } from "./notifications";
 
 const requestSchema = z.object({
@@ -29,11 +30,17 @@ export async function requestOvertime(ctx: AppContext, raw: unknown) {
       reason: input.reason,
     },
   });
+  await writeAudit(actorFrom(ctx), {
+    action: "overtime.request",
+    entityType: "OvertimeRequest",
+    entityId: req.id,
+    after: { date: input.date, minutes: input.minutes, reason: input.reason },
+  });
   await notifyManagers(ctx.company.id, ctx.employee.id, {
     kind: "overtime.request",
     title: `${fullName(ctx.employee)} requested overtime`,
     body: `${Math.round(input.minutes / 6) / 10}h on ${formatKey(input.date)}: ${input.reason}`,
-    url: "/app/timesheets?tab=overtime",
+    url: "/app/exceptions?tab=overtime",
   });
   return req;
 }
@@ -43,6 +50,8 @@ export async function decideOvertime(ctx: AppContext, id: string, approve: boole
   requireFeature(ctx, "overtime");
   const req = await ctx.db.overtimeRequest.findUnique({ where: { id } });
   if (!req || req.status !== "PENDING") throw new UserError("Request not found or already decided.");
+  assertNotSelf(ctx, req.employeeId, "overtime");
+  await assertEmployeeInScope(ctx, req.employeeId);
   await ctx.db.overtimeRequest.update({
     where: { id },
     data: {
@@ -76,6 +85,8 @@ export async function approveOvertimeFor(
   requireFeature(ctx, "overtime");
   const emp = await ctx.db.employee.findUnique({ where: { id: employeeId } });
   if (!emp) throw new UserError("Employee not found.");
+  assertNotSelf(ctx, employeeId, "overtime");
+  await assertEmployeeInScope(ctx, employeeId);
   const r = await ctx.db.overtimeRequest.create({
     data: {
       companyId: ctx.company.id,

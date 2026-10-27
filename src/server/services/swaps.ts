@@ -5,6 +5,7 @@ import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import { requireFeature, type AppContext } from "../context";
 import { prisma } from "../db";
+import { assertEmployeeInScope, assertNotSelf } from "../scope";
 import { notify, notifyManagers } from "./notifications";
 
 export async function requestSwap(
@@ -98,6 +99,8 @@ export async function decideSwap(ctx: AppContext, requestId: string, approve: bo
     include: { shift: true, targetShift: true },
   });
   if (!req || req.status !== "PENDING_MANAGER") throw new UserError("Request not found or already decided.");
+  assertNotSelf(ctx, req.requesterId, "shift swap");
+  await assertEmployeeInScope(ctx, req.requesterId);
   if (approve) {
     await prisma.$transaction(async (tx) => {
       if (req.targetShiftId && req.targetShift) {
@@ -182,6 +185,8 @@ export async function decideClaim(ctx: AppContext, claimId: string, approve: boo
   const claim = await prisma.openShiftClaim.findUnique({ where: { id: claimId }, include: { shift: true } });
   if (!claim || claim.shift.companyId !== ctx.company.id || claim.status !== "PENDING")
     throw new UserError("Claim not found.");
+  assertNotSelf(ctx, claim.employeeId, "shift claim");
+  await assertEmployeeInScope(ctx, claim.employeeId);
   if (approve) {
     if (claim.shift.employeeId) throw new UserError("This shift was already given to someone else.");
     await prisma.$transaction([

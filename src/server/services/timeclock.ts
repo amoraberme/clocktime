@@ -6,7 +6,7 @@ import { hasFeature } from "@/lib/entitlements";
 import { evaluateGeofence, formatDistance, haversineMeters, ipAllowed } from "@/lib/geo";
 import { elapsedMinutes } from "@/lib/pay/hours";
 import type { CompanySettings } from "@/lib/settings";
-import { atMinute, dateKey } from "@/lib/time";
+import { atMinute, dateKey, keyToUtcDate } from "@/lib/time";
 import { UserError } from "../action";
 import { prisma } from "../db";
 
@@ -20,8 +20,12 @@ export type PunchActor = {
 
 export type PunchInput = {
   action: PunchAction;
-  /** When the punch happened (offline punches arrive later). Defaults to now. */
+  /**
+   * When the punch happened. Only honored when `offline` is set (queued punches and terminals that
+   * upload their own logs); live punches always use the server clock so a phone's clock can't be gamed.
+   */
   at?: Date;
+  offline?: boolean;
   clientId?: string;
   lat?: number | null;
   lng?: number | null;
@@ -119,6 +123,49 @@ function checkPolicies(actor: PunchActor, input: PunchInput, location: Location 
   return { outside: false };
 }
 
+/**
+ * Automatic punches come from the app's geofence watcher. They may only clock someone out of an
+ * open entry at an auto clock-out location, from a GPS fix outside that location.
+ */
+function assertAutoClockOut(
+  actor: PunchActor,
+  input: PunchInput,
+  open: { location: Location | null } | null,
+) {
+  const location = open?.location;
+  if (
+    input.action !== "CLOCK_OUT" ||
+    !location ||
+    !location.autoClockOut ||
+    !hasFeature(actor.plan, "geofence")
+  )
+    throw new UserError("Automatic punches can only clock you out when you leave the site.");
+  const point =
+    input.lat != null && input.lng != null
+      ? { lat: input.lat, lng: input.lng, accuracy: input.accuracy }
+      : null;
+  // Auto clock-out uses the site radius even when punch geofencing itself is off.
+  if (evaluateGeofence(point, { ...location, geofenceMode: "WARN" }).status !== "outside")
+    throw new UserError("Automatic clock-out needs a location outside the site.");
+}
+
+/** Punches can't change a pay period that payroll has already finalized. */
+async function assertPeriodOpen(db: Db, actor: PunchActor, at: Date) {
+  const day = keyToUtcDate(dateKey(at, actor.timezone));
+  const closed = await db.payRun.findFirst({
+    where: {
+      companyId: actor.companyId,
+      kind: "REGULAR",
+      status: { in: ["FINALIZED", "PAID"] },
+      periodStart: { lte: day },
+      periodEnd: { gte: day },
+    },
+    select: { id: true },
+  });
+  if (closed)
+    throw new UserError("Payroll for that date is already finalized. Ask HR to record it as an adjustment.");
+}
+
 async function findShiftFor(db: Db, companyId: string, employeeId: string, at: Date) {
   const shifts = await db.shift.findMany({
     where: {
@@ -195,13 +242,14 @@ export async function punch(actor: PunchActor, input: PunchInput): Promise<Punch
         };
       }
       const now = Date.now();
-      const at = input.at ?? new Date(now);
+      const at = input.offline && input.at ? input.at : new Date(now);
       let locationId: string | null = null;
       try {
         if (at.getTime() > now + MAX_FUTURE_MS)
           throw new UserError("This punch's time is in the future. Check your phone's clock.");
         if (at.getTime() < now - MAX_AGE_MS)
           throw new UserError("This punch is more than 3 days old. Ask your manager to add it.");
+        await assertPeriodOpen(tx, actor, at);
         const result = await applyPunch(tx, actor, input, at, (id) => (locationId = id));
         await logPunch(tx, actor, input, clientId, at, {
           accepted: true,
@@ -237,6 +285,7 @@ async function applyPunch(
     orderBy: { clockInAt: "desc" },
   });
   const gps = { lat: input.lat ?? null, lng: input.lng ?? null, accuracy: input.accuracy ?? null };
+  if (input.source === "AUTO") assertAutoClockOut(actor, input, open);
 
   switch (input.action) {
     case "CLOCK_IN": {

@@ -4,6 +4,7 @@ import { centavosToPesos } from "@/lib/money";
 import { utcDateToKey } from "@/lib/time";
 import { getContextOrThrow } from "@/server/context";
 import { decrypt } from "@/server/crypto";
+import { actorFrom, writeAudit } from "@/server/audit";
 
 const peso = (c: number) => Number(centavosToPesos(c).toFixed(2));
 
@@ -22,6 +23,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ runId: s
     include: { items: { include: { employee: true }, orderBy: { employee: { lastName: "asc" } } } },
   });
   if (!run) return new Response("Not found", { status: 404 });
+  await writeAudit(actorFrom(ctx), {
+    action: "payroll.export",
+    entityType: "PayRun",
+    entityId: run.id,
+    after: { format },
+  });
   const base = `${ctx.company.slug}-payroll-${utcDateToKey(run.periodStart)}_${utcDateToKey(run.periodEnd)}`;
   const name = (e: { firstName: string; lastName: string }) => `${e.lastName}, ${e.firstName}`;
 

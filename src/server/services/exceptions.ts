@@ -9,6 +9,7 @@ import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import type { AppContext } from "../context";
 import { prisma } from "../db";
+import { assertEmployeeInScope } from "../scope";
 import { notifyManagers } from "./notifications";
 import { approveOvertimeFor } from "./overtime";
 
@@ -96,8 +97,21 @@ export async function detectOnPunch(companyId: string, employeeId: string, entry
   };
 
   if (entry.shift) {
+    // Split shifts (out for lunch, back in): only the first entry can be late, only the last early.
+    const siblings = await prisma.timeEntry.findMany({
+      where: { companyId, shiftId: entry.shiftId, id: { not: entry.id } },
+      select: { id: true, clockInAt: true },
+    });
+    const earlier = siblings.filter((e) => e.clockInAt < entry.clockInAt).map((e) => e.id);
+    const isLast = !siblings.some((e) => e.clockInAt > entry.clockInAt);
+    if (earlier.length > 0) {
+      await prisma.timeException.updateMany({
+        where: { companyId, type: "EARLY_DEPARTURE", status: "OPEN", timeEntryId: { in: earlier } },
+        data: { status: "DISMISSED", resolvedAt: new Date(), resolutionNote: "Returned to the same shift" },
+      });
+    }
     const late = minutesBetween(entry.shift.startAt, entry.clockInAt);
-    if (late > settings.lateGraceMinutes) {
+    if (earlier.length === 0 && late > settings.lateGraceMinutes) {
       await add({
         type: "LATE_ARRIVAL",
         date: day,
@@ -107,7 +121,7 @@ export async function detectOnPunch(companyId: string, employeeId: string, entry
         details: { minutes: late, scheduled: formatTime(entry.shift.startAt, tz) },
       });
     }
-    if (entry.clockOutAt) {
+    if (entry.clockOutAt && isLast) {
       const early = minutesBetween(entry.clockOutAt, entry.shift.endAt);
       if (early > settings.lateGraceMinutes) {
         await add({
@@ -296,6 +310,7 @@ export async function resolveException(
   const x = await ctx.db.timeException.findUnique({ where: { id } });
   if (!x) throw new UserError("Exception not found.");
   if (x.status !== "OPEN") throw new UserError("Already handled.");
+  await assertEmployeeInScope(ctx, x.employeeId);
   if (action === "approve_overtime") {
     if (x.type !== "UNAPPROVED_OVERTIME") throw new UserError("Only overtime exceptions can be approved.");
     const d = x.details as { minutes?: number; approved?: number };

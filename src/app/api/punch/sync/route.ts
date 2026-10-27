@@ -27,6 +27,7 @@ export async function POST(req: Request) {
         const r = await punch(actor, {
           ...rest,
           at: p.at ? new Date(p.at) : undefined,
+          offline: true,
           source: auto ? "AUTO" : "MOBILE",
           ip,
           photoKey: await savePunchPhoto(ctx.company.id, photo),

@@ -1,6 +1,7 @@
 import { csvResponse } from "@/lib/csv";
 import { centavosToPesos } from "@/lib/money";
 import { dateKey, formatHoursDecimal, formatTime } from "@/lib/time";
+import { actorFrom, writeAudit } from "@/server/audit";
 import { getContextOrThrow } from "@/server/context";
 import { currentPeriod, teamPeriodSummary } from "@/server/services/timesheets";
 
@@ -15,6 +16,11 @@ export async function GET(req: Request) {
   const period = currentPeriod(ctx, url.searchParams.get("start") ?? undefined);
   const format = url.searchParams.get("format") === "detail" ? "detail" : "summary";
   const rows = await teamPeriodSummary(ctx, period);
+  await writeAudit(actorFrom(ctx), {
+    action: "timesheets.export",
+    entityType: "Timesheet",
+    after: { period, format, rows: rows.length },
+  });
   const tz = ctx.company.timezone;
   const name = `${ctx.company.slug}-timesheets-${period.start}_${period.end}-${format}.csv`;
 

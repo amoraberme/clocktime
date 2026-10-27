@@ -5,6 +5,7 @@ import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import type { AppContext } from "../context";
 import { prisma } from "../db";
+import { employeeScopeWhere } from "../scope";
 import { requireFeature } from "../context";
 import { recheckEntry } from "./exceptions";
 import { afterPunch } from "./punch-hooks";
@@ -183,7 +184,19 @@ export async function setTimesheetApproval(
   requireFeature(ctx, "approvals");
   const bounds = periodBounds(period.start, period.end, ctx.company.timezone);
   const results = { approved: 0, skipped: 0 };
+  const allowed = new Set(
+    (
+      await ctx.db.employee.findMany({
+        where: { id: { in: employeeIds }, ...employeeScopeWhere(ctx) },
+        select: { id: true },
+      })
+    ).map((e) => e.id),
+  );
   for (const employeeId of employeeIds) {
+    if (!allowed.has(employeeId)) {
+      results.skipped++;
+      continue;
+    }
     const existing = await ctx.db.timesheet.findUnique({
       where: { employeeId_periodStart: { employeeId, periodStart: keyToUtcDate(period.start) } },
     });

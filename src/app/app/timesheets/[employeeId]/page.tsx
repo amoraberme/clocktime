@@ -14,6 +14,7 @@ import { DAY_TYPE_LABELS } from "@/lib/pay/premiums";
 import { dateKey, eachDay, formatKey, formatMinutes, formatTime, toLocalDateTimeInput } from "@/lib/time";
 import { fullName } from "@/lib/utils";
 import { requireContext } from "@/server/context";
+import { employeeScopeWhere } from "@/server/scope";
 import {
   computeEmployeePeriod,
   currentPeriod,
@@ -32,7 +33,7 @@ export default async function EmployeeTimesheetPage({
   const ctx = await requireContext("MANAGER");
   const { employeeId } = await params;
   const { start } = await searchParams;
-  const emp = await ctx.db.employee.findUnique({ where: { id: employeeId } });
+  const emp = await ctx.db.employee.findFirst({ where: { id: employeeId, ...employeeScopeWhere(ctx) } });
   if (!emp) notFound();
   const tz = ctx.company.timezone;
   const period = currentPeriod(ctx, start);

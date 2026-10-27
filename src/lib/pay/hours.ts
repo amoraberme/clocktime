@@ -8,7 +8,10 @@
  * - Unpaid breaks are removed. If none were recorded on a long entry, the standard meal break is
  *   deducted from the middle of the entry.
  * - Overtime = minutes beyond dailyRegularMinutes on the work date (the local date the entry
- *   started), summed across that date's entries.
+ *   started), summed across that date's entries. A duty longer than 24 hours is split into
+ *   24-hour workdays counted from its start, and each workday earns fresh regular hours.
+ * - Several entries on one shift (e.g. clocking out for lunch) are late only on the first entry
+ *   and undertime only on the last.
  * - Day type (rest day, holidays) is decided per calendar minute, so work that crosses midnight
  *   into a holiday earns holiday rates only for the holiday hours.
  */
@@ -113,8 +116,15 @@ function isNight(minute: number, start: number, end: number) {
   return start > end ? minute >= start || minute < end : minute >= start && minute < end;
 }
 
+/** Which shift checks apply to an entry; split shifts check lateness first and undertime last. */
+export type ShiftChecks = { late: boolean; undertime: boolean };
+
 /** Effective worked intervals of one closed entry after rounding, clamping and breaks. */
-export function workedIntervals(entry: EntryInput, s: HoursSettings) {
+export function workedIntervals(
+  entry: EntryInput,
+  s: HoursSettings,
+  checks: ShiftChecks = { late: true, undertime: true },
+) {
   if (!entry.clockOutAt)
     return { intervals: [] as Interval[], breakMinutes: 0, lateMinutes: 0, undertimeMinutes: 0 };
   let start = roundInstant(entry.clockInAt, s.roundingMinutes, s.roundingMode).getTime();
@@ -124,10 +134,12 @@ export function workedIntervals(entry: EntryInput, s: HoursSettings) {
   if (entry.shift) {
     const shiftStart = entry.shift.startAt.getTime();
     const shiftEnd = entry.shift.endAt.getTime();
-    if (s.clampEarlyClockIn && start < shiftStart) start = Math.min(shiftStart, end);
-    const late = Math.round((start - shiftStart) / 60000);
-    if (late > s.lateGraceMinutes) lateMinutes = late;
-    if (end < shiftEnd) undertimeMinutes = Math.round((shiftEnd - end) / 60000);
+    if (checks.late) {
+      if (s.clampEarlyClockIn && start < shiftStart) start = Math.min(shiftStart, end);
+      const late = Math.round((start - shiftStart) / 60000);
+      if (late > s.lateGraceMinutes) lateMinutes = late;
+    }
+    if (checks.undertime && end < shiftEnd) undertimeMinutes = Math.round((shiftEnd - end) / 60000);
   }
   if (end <= start) return { intervals: [] as Interval[], breakMinutes: 0, lateMinutes, undertimeMinutes };
   let intervals: Interval[] = [[start, end]];
@@ -154,6 +166,24 @@ export function workedIntervals(entry: EntryInput, s: HoursSettings) {
   return { intervals, breakMinutes: Math.round(breakMinutes), lateMinutes, undertimeMinutes };
 }
 
+const DAY_MS = 24 * 3600_000;
+
+/** Late/undertime checks per entry: only the first and last entry of each shift. */
+export function shiftChecksFor(entries: EntryInput[]) {
+  const byShift = new Map<string, EntryInput[]>();
+  for (const e of entries) {
+    if (!e.shift || !e.clockOutAt) continue;
+    const key = `${e.shift.startAt.getTime()}-${e.shift.endAt.getTime()}`;
+    byShift.set(key, [...(byShift.get(key) ?? []), e]);
+  }
+  const checks = new Map<string, ShiftChecks>();
+  for (const group of byShift.values()) {
+    const sorted = [...group].sort((a, b) => a.clockInAt.getTime() - b.clockInAt.getTime());
+    sorted.forEach((e, i) => checks.set(e.id, { late: i === 0, undertime: i === sorted.length - 1 }));
+  }
+  return checks;
+}
+
 export function computeHours(entries: EntryInput[], ctx: HoursContext): HoursResult {
   const s = ctx.settings;
   const buckets: Partial<Record<BucketKey, number>> = {};
@@ -162,14 +192,7 @@ export function computeHours(entries: EntryInput[], ctx: HoursContext): HoursRes
   const openEntryIds: string[] = [];
   const minutesByCalendarDate: Record<string, number> = {};
 
-  const sorted = [...entries].sort((a, b) => a.clockInAt.getTime() - b.clockInAt.getTime());
-  for (const entry of sorted) {
-    if (!entry.clockOutAt) {
-      openEntryIds.push(entry.id);
-      continue;
-    }
-    const { intervals, breakMinutes, lateMinutes, undertimeMinutes } = workedIntervals(entry, s);
-    const workDate = dateKey(entry.clockInAt, ctx.timezone);
+  const dayFor = (workDate: string) => {
     let day = days.get(workDate);
     if (!day) {
       day = {
@@ -187,29 +210,51 @@ export function computeHours(entries: EntryInput[], ctx: HoursContext): HoursRes
       };
       days.set(workDate, day);
     }
+    return day;
+  };
+
+  const sorted = [...entries].sort((a, b) => a.clockInAt.getTime() - b.clockInAt.getTime());
+  const checks = shiftChecksFor(sorted);
+  for (const entry of sorted) {
+    if (!entry.clockOutAt) {
+      openEntryIds.push(entry.id);
+      continue;
+    }
+    const { intervals, breakMinutes, lateMinutes, undertimeMinutes } = workedIntervals(
+      entry,
+      s,
+      checks.get(entry.id),
+    );
+    const startMs = intervals[0]?.[0] ?? entry.clockInAt.getTime();
+    const workDate = dateKey(entry.clockInAt, ctx.timezone);
+    const day = dayFor(workDate);
     day.entryIds.push(entry.id);
     day.breakMinutes += breakMinutes;
     day.lateMinutes += lateMinutes;
     day.undertimeMinutes += undertimeMinutes;
 
     for (const [a, b] of intervals) {
-      // Walk minute by minute; entries are at most a day long so this stays cheap.
       for (let t = a; t + 60000 <= b; t += 60000) {
         const instant = new Date(t);
         const calKey = dateKey(instant, ctx.timezone);
         const dayType = dayTypeFor(calKey, ctx);
         minutesByCalendarDate[calKey] = (minutesByCalendarDate[calKey] ?? 0) + 1;
-        const used = regularUsed.get(workDate) ?? 0;
+        // Each 24 hours of a long duty is a new workday with its own regular hours.
+        const segment = Math.floor((t - startMs) / DAY_MS);
+        const segDate =
+          segment === 0 ? workDate : dateKey(new Date(startMs + segment * DAY_MS), ctx.timezone);
+        const segDay = segment === 0 ? day : dayFor(segDate);
+        const used = regularUsed.get(segDate) ?? 0;
         const ot = used >= s.dailyRegularMinutes;
-        if (!ot) regularUsed.set(workDate, used + 1);
+        if (!ot) regularUsed.set(segDate, used + 1);
         const nd = isNight(minuteOfDay(instant, ctx.timezone), s.nightDiffStartMinute, s.nightDiffEndMinute);
         const key: BucketKey = `${dayType}|${ot ? "OT" : "REG"}|${nd ? "ND" : "DAY"}`;
         buckets[key] = (buckets[key] ?? 0) + 1;
-        day.buckets[key] = (day.buckets[key] ?? 0) + 1;
-        day.workedMinutes++;
-        if (ot) day.overtimeMinutes++;
-        else day.regularMinutes++;
-        if (nd) day.nightMinutes++;
+        segDay.buckets[key] = (segDay.buckets[key] ?? 0) + 1;
+        segDay.workedMinutes++;
+        if (ot) segDay.overtimeMinutes++;
+        else segDay.regularMinutes++;
+        if (nd) segDay.nightMinutes++;
       }
     }
   }

@@ -29,6 +29,7 @@ export async function POST(req: Request) {
           action: p.action,
           clientId: p.clientId,
           at: p.at ? new Date(p.at) : undefined,
+          offline: true,
           source: "KIOSK",
           deviceId: k.device.id,
           kioskLocationId: k.location.id,

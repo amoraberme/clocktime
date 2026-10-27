@@ -23,7 +23,6 @@ export async function POST(req: Request) {
     const result = await punch(kioskActor(k, emp), {
       action: p.action,
       clientId: p.clientId,
-      at: p.at ? new Date(p.at) : undefined,
       source: "KIOSK",
       deviceId: k.device.id,
       kioskLocationId: k.location.id,
