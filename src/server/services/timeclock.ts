@@ -92,6 +92,7 @@ function checkPolicies(actor: PunchActor, input: PunchInput, location: Location 
     hasFeature(actor.plan, "photoProof") &&
     location.requirePhoto &&
     !input.photoKey &&
+    input.source !== "AUTO" &&
     (input.action === "CLOCK_IN" || input.action === "CLOCK_OUT")
   ) {
     throw new UserError("A photo is required to punch at this location.");
@@ -333,6 +334,7 @@ export type ClockState = {
   entry: {
     id: string;
     clockInAt: string;
+    locationId: string | null;
     locationName: string | null;
     breakStartedAt: string | null;
     workedMinutes: number;
@@ -346,6 +348,8 @@ export type ClockState = {
     longitude: number | null;
     radiusMeters: number;
     geofenceMode: string;
+    autoClockOut: boolean;
+    requirePhoto: boolean;
   }[];
 };
 
@@ -377,6 +381,7 @@ export async function getClockState(actor: PunchActor): Promise<ClockState> {
       ? {
           id: open.id,
           clockInAt: open.clockInAt.toISOString(),
+          locationId: open.locationId,
           locationName: open.location?.name ?? null,
           breakStartedAt: openBreak?.startAt.toISOString() ?? null,
           workedMinutes: elapsedMinutes(open),
@@ -397,6 +402,8 @@ export async function getClockState(actor: PunchActor): Promise<ClockState> {
       longitude: l.longitude,
       radiusMeters: l.radiusMeters,
       geofenceMode: hasFeature(actor.plan, "geofence") ? l.geofenceMode : "OFF",
+      autoClockOut: hasFeature(actor.plan, "geofence") && l.autoClockOut,
+      requirePhoto: hasFeature(actor.plan, "photoProof") && l.requirePhoto,
     })),
   };
 }

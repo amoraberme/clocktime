@@ -1,7 +1,27 @@
 "use client";
 
-import { CloudOff, Coffee, LocateFixed, LogIn, LogOut, MapPin, RefreshCw, TriangleAlert } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  Camera as CameraIcon,
+  CloudOff,
+  Coffee,
+  LocateFixed,
+  LogIn,
+  LogOut,
+  MapPin,
+  RefreshCw,
+  TriangleAlert,
+} from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { Camera, type CameraHandle } from "@/components/kiosk/camera";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -71,6 +91,10 @@ export function ClockPanel({
   const [queue, setQueue] = useState<QueuedPunch[]>([]);
   const [rejected, setRejected] = useState<RejectedPunch[]>([]);
   const [busy, setBusy] = useState<Action | null>(null);
+  const [photoFor, setPhotoFor] = useState<Action | null>(null);
+  const cameraRef = useRef<CameraHandle>(null);
+  const outsideSince = useRef<number | null>(null);
+  const autoFired = useRef(false);
   const [now, setNow] = useState(() => Date.now());
   const [position, setPosition] = useState<Position | null>(null);
   const [locationId, setLocationId] = useState<string>("");
@@ -149,11 +173,67 @@ export function ClockPanel({
     ? nearest.distance - Math.min(position?.accuracy ?? 0, 100) <= nearest.radiusMeters
     : null;
 
-  async function doPunch(action: Action) {
+  function nearestTo(pos: Position | null) {
+    if (!pos) return server.locations[0] ?? null;
+    return (
+      server.locations
+        .filter((l) => l.latitude != null && l.longitude != null)
+        .map((l) => ({ l, d: haversineMeters(pos, { lat: l.latitude!, lng: l.longitude! }) }))
+        .sort((a, b) => a.d - b.d)[0]?.l ??
+      server.locations[0] ??
+      null
+    );
+  }
+
+  // Auto clock-out: while on the clock at a site with it enabled, clock out after 5 minutes outside the geofence.
+  const site = server.locations.find((l) => l.id === server.entry?.locationId);
+  const watchSite =
+    server.status !== "out" && site?.autoClockOut && site.latitude != null && site.longitude != null
+      ? site
+      : null;
+  const onLeftSite = useEffectEvent(() => void doPunch("CLOCK_OUT", { auto: true }));
+  useEffect(() => {
+    if (!watchSite || !navigator.geolocation) return;
+    autoFired.current = false;
+    outsideSince.current = null;
+    const id = navigator.geolocation.watchPosition(
+      (p) => {
+        const d = haversineMeters(
+          { lat: p.coords.latitude, lng: p.coords.longitude },
+          { lat: watchSite.latitude!, lng: watchSite.longitude! },
+        );
+        const outside = d - Math.min(p.coords.accuracy, 100) > watchSite.radiusMeters;
+        if (!outside) {
+          outsideSince.current = null;
+          return;
+        }
+        outsideSince.current ??= Date.now();
+        if (!autoFired.current && Date.now() - outsideSince.current > 5 * 60_000) {
+          autoFired.current = true;
+          onLeftSite();
+        }
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 60_000 },
+    );
+    return () => navigator.geolocation.clearWatch(id);
+  }, [watchSite]);
+
+  async function doPunch(action: Action, opts: { auto?: boolean; photo?: string } = {}) {
     setBusy(action);
     const pos = await getPosition();
     if (pos) setPosition(pos);
+    if ((action === "CLOCK_IN" || action === "CLOCK_OUT") && !opts.auto && !opts.photo) {
+      const siteId = action === "CLOCK_OUT" ? server.entry?.locationId : locationId || nearestTo(pos)?.id;
+      if (server.locations.find((l) => l.id === siteId)?.requirePhoto) {
+        setBusy(null);
+        setPhotoFor(action);
+        return;
+      }
+    }
     const payload: PunchPayload = {
+      photo: opts.photo ?? null,
+      auto: opts.auto,
       action,
       clientId: crypto.randomUUID(),
       at: new Date().toISOString(),
@@ -178,7 +258,14 @@ export function ClockPanel({
         toast.error(body.error ?? "Punch failed");
       } else {
         if (body.state) setServer(body.state);
-        toast.success(successMessage(action, firstName), { description: body.result?.warning });
+        toast.success(
+          opts.auto
+            ? "You left the site, so you were clocked out automatically."
+            : successMessage(action, firstName),
+          {
+            description: body.result?.warning,
+          },
+        );
         if ("vibrate" in navigator) navigator.vibrate?.(60);
       }
     } catch {
@@ -316,6 +403,30 @@ export function ClockPanel({
             </Button>
           </CardContent>
         </Card>
+      ) : null}
+      {photoFor ? (
+        <Dialog open onOpenChange={(o) => !o && setPhotoFor(null)}>
+          <DialogContent title="Photo check" description="This site asks for a quick photo when you punch.">
+            <Camera
+              ref={cameraRef}
+              facing="user"
+              className="aspect-[4/3] overflow-hidden rounded-lg bg-black"
+            />
+            <Button
+              size="lg"
+              className="mt-4 w-full"
+              onClick={() => {
+                const photo = cameraRef.current?.capture();
+                if (!photo) return toast.error("The camera isn't ready yet.");
+                const action = photoFor;
+                setPhotoFor(null);
+                void doPunch(action, { photo });
+              }}
+            >
+              <CameraIcon /> Take photo & {photoFor === "CLOCK_IN" ? "clock in" : "clock out"}
+            </Button>
+          </DialogContent>
+        </Dialog>
       ) : null}
     </div>
   );

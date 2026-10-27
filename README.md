@@ -22,7 +22,7 @@ pnpm db:seed                    # statutory tables, PH holidays, demo company
 pnpm dev                        # http://localhost:3000
 ```
 
-Demo logins (password `demo12345`): `owner@demo.clocktime.ph` (owner), `jose@demo.clocktime.ph` (manager), `ana@demo.clocktime.ph` (employee). Demo company code: `DEMO2026`.
+Demo logins (password `demo12345`): `owner@demo.clocktime.ph` (owner), `jose@demo.clocktime.ph` (manager), `ana@demo.clocktime.ph` (employee). Demo company code: `DEMO2026`. Kiosk PINs are `1001`–`1007` in team order (Maria = 1001, Ana = 1003).
 
 ## Scripts
 

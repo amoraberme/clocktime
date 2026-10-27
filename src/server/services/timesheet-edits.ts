@@ -6,6 +6,8 @@ import { actorFrom, writeAudit } from "../audit";
 import type { AppContext } from "../context";
 import { prisma } from "../db";
 import { requireFeature } from "../context";
+import { recheckEntry } from "./exceptions";
+import { afterPunch } from "./punch-hooks";
 import { periodBounds } from "./timesheets";
 
 export const entryEditSchema = z.object({
@@ -121,6 +123,8 @@ export async function editTimeEntry(ctx: AppContext, entryId: string, raw: unkno
     after: snapshot(after),
     reason: input.reason,
   });
+  await recheckEntry(ctx.company.id, entryId);
+  if (after.clockOutAt) await afterPunch(ctx.company.id, after.employeeId, entryId);
   return after;
 }
 

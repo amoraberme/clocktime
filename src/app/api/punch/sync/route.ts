@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { UserError } from "@/server/action";
 import { getContextOrThrow } from "@/server/context";
+import { savePunchPhoto } from "@/server/kiosk";
 import { actorOf, errorResponse } from "@/server/punch-http";
 import { clientIp } from "@/server/request";
 import { afterPunch } from "@/server/services/punch-hooks";
@@ -18,7 +19,14 @@ export async function POST(req: Request) {
     const results: { clientId: string; ok: boolean; error?: string }[] = [];
     for (const p of ordered) {
       try {
-        const r = await punch(actor, { ...p, at: p.at ? new Date(p.at) : undefined, source: "MOBILE", ip });
+        const { photo, auto, ...rest } = p;
+        const r = await punch(actor, {
+          ...rest,
+          at: p.at ? new Date(p.at) : undefined,
+          source: auto ? "AUTO" : "MOBILE",
+          ip,
+          photoKey: await savePunchPhoto(ctx.company.id, photo),
+        });
         await afterPunch(ctx.company.id, ctx.employee.id, r.entryId);
         results.push({ clientId: p.clientId, ok: true });
       } catch (err) {

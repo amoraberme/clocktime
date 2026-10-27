@@ -38,7 +38,7 @@ export default async function DashboardPage({
     { count: d.inbox.staleOpen, label: "possible missed clock-outs", href: "/app/timesheets" },
     { count: d.inbox.pendingLeave, label: "time-off requests", href: "/app/leave" },
     { count: d.inbox.pendingSwaps, label: "shift swap requests", href: "/app/schedule?tab=requests" },
-    { count: d.inbox.pendingOt, label: "overtime requests", href: "/app/timesheets?tab=overtime" },
+    { count: d.inbox.pendingOt, label: "overtime requests", href: "/app/exceptions?tab=overtime" },
     { count: d.lateOrMissing.length, label: "scheduled but not clocked in", href: "#late" },
   ].filter((i) => i.count > 0);
 

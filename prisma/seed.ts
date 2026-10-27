@@ -3,7 +3,7 @@
  * Idempotent: safe to run repeatedly.
  */
 import "dotenv/config";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID, scryptSync } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { hashPassword } from "better-auth/crypto";
 import { PrismaClient } from "../src/generated/prisma/client";
@@ -78,6 +78,17 @@ async function seedHolidays() {
     if (!existing)
       await prisma.holiday.create({ data: { date: keyToUtcDate(h.date), name: h.name, type: h.type } });
   }
+}
+
+/** Same scheme as src/server/crypto.ts (hashSecret + pinLookup). */
+function kioskPin(companyId: string, pin: string) {
+  const salt = randomBytes(16);
+  return {
+    pinHash: `scrypt.${salt.toString("base64url")}.${scryptSync(pin, salt, 32).toString("base64url")}`,
+    pinLookup: createHmac("sha256", process.env.BETTER_AUTH_SECRET!)
+      .update(`${companyId}:${pin}`)
+      .digest("base64url"),
+  };
 }
 
 async function createUser(name: string, email: string, password: string) {
@@ -252,7 +263,9 @@ async function seedDemo() {
           firstName: p.first,
           lastName: p.last,
           email: user.email,
-          employeeNo: String(n++).padStart(4, "0"),
+          employeeNo: String(n).padStart(4, "0"),
+          // Demo kiosk PINs: 1001, 1002, …
+          ...kioskPin(company.id, String(1000 + n++)),
           role: p.role,
           status: "ACTIVE",
           payType: p.payType,
@@ -273,6 +286,7 @@ async function seedDemo() {
   const today = dateKey(new Date(), TZ);
   const firstDay = startOfWeek(addDays(today, -21), 1);
   const staff = employees.slice(1);
+  const lateArrivals: { employeeId: string; shiftId: string; day: string; minutes: number }[] = [];
   for (let k = firstDay; k <= addDays(startOfWeek(today, 1), 13); k = addDays(k, 1)) {
     if (weekday(k) === 0) continue;
     for (const [i, e] of staff.entries()) {
@@ -302,6 +316,8 @@ async function seedDemo() {
       const jitterOut = ((i * 5 + Number(k.slice(-2)) * 11) % 50) - 5;
       const loc = locationId === main.id ? main : bgc;
       const inAt = new Date(startAt.getTime() + jitterIn * 60000);
+      if (jitterIn > DEFAULT_SETTINGS.lateGraceMinutes && k >= addDays(today, -10))
+        lateArrivals.push({ employeeId: e.id, shiftId: shift.id, day: k, minutes: jitterIn });
       const outAt = new Date(endAt.getTime() + jitterOut * 60000);
       const lunch = new Date(startAt.getTime() + 4 * 3600_000);
       await prisma.timeEntry.create({
@@ -347,6 +363,42 @@ async function seedDemo() {
       },
     });
   }
+  // A few items so the exception inbox, overtime and leave approvals aren't empty.
+  for (const l of lateArrivals) {
+    await prisma.timeException.create({
+      data: {
+        companyId: company.id,
+        employeeId: l.employeeId,
+        type: "LATE_ARRIVAL",
+        date: keyToUtcDate(l.day),
+        shiftId: l.shiftId,
+        dedupeKey: `SEED-LATE:${l.shiftId}`,
+        details: { minutes: l.minutes, scheduled: "shift start" },
+      },
+    });
+  }
+  const [ana, mark] = [employees[2]!, employees[3]!];
+  await prisma.overtimeRequest.create({
+    data: {
+      companyId: company.id,
+      employeeId: mark.id,
+      date: keyToUtcDate(addDays(today, -1)),
+      minutes: 90,
+      reason: "Covered inventory count after closing",
+    },
+  });
+  const vl = await prisma.leaveType.findFirstOrThrow({ where: { companyId: company.id, code: "VL" } });
+  await prisma.leaveRequest.create({
+    data: {
+      companyId: company.id,
+      employeeId: ana.id,
+      leaveTypeId: vl.id,
+      startDate: keyToUtcDate(addDays(today, 9)),
+      endDate: keyToUtcDate(addDays(today, 10)),
+      days: 2,
+      reason: "Family event in Batangas",
+    },
+  });
   console.log(
     `Demo company created. Sign in as owner@demo.clocktime.ph / demo12345 (staff: ana@demo.clocktime.ph …)`,
   );
