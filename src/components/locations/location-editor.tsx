@@ -7,7 +7,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { archiveLocationAction, saveLocationAction } from "@/app/app/locations/actions";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Textarea } from "@/components/ui/input";
+import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Alert } from "@/components/ui/misc";
 import { Switch } from "@/components/ui/switch";
 
@@ -27,15 +27,20 @@ export type LocationValues = {
   autoClockOut: boolean;
   allowedIps: string[];
   requirePhoto: boolean;
+  code: string;
+  regionId: string | null;
 };
 
 export function LocationEditor({
   initial,
   features,
+  regions = [],
   onSaved,
 }: {
   initial: LocationValues;
   features: { geofence: boolean; ipLock: boolean; photoProof: boolean };
+  /** Present when the plan has regions (Enterprise). */
+  regions?: { id: string; name: string }[];
   onSaved?: () => void;
 }) {
   const router = useRouter();
@@ -58,6 +63,7 @@ export function LocationEditor({
     const r = await saveLocationAction(v.id ?? null, {
       ...v,
       address: v.address || undefined,
+      code: v.code || undefined,
       allowedIps: ips
         .split(/[\s,]+/)
         .map((s) => s.trim())
@@ -91,6 +97,29 @@ export function LocationEditor({
             onChange={(e) => setV({ ...v, address: e.target.value })}
           />
         </Field>
+        <Field label="Branch code" htmlFor={`code-${v.id ?? "new"}`} hint="Shown on reports, e.g. MNL-01">
+          <Input
+            id={`code-${v.id ?? "new"}`}
+            value={v.code}
+            onChange={(e) => setV({ ...v, code: e.target.value })}
+          />
+        </Field>
+        {regions.length > 0 ? (
+          <Field label="Region" htmlFor={`region-${v.id ?? "new"}`}>
+            <Select
+              id={`region-${v.id ?? "new"}`}
+              value={v.regionId ?? ""}
+              onChange={(e) => setV({ ...v, regionId: e.target.value || null })}
+            >
+              <option value="">No region</option>
+              {regions.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
       </div>
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">

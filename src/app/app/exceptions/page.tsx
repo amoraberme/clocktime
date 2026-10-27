@@ -15,6 +15,7 @@ import type { ExceptionType } from "@/generated/prisma/enums";
 import { formatKey, formatMinutes, utcDateToKey } from "@/lib/time";
 import { cn, fullName } from "@/lib/utils";
 import { requireContext } from "@/server/context";
+import { employeeScopeWhere } from "@/server/scope";
 import { EXCEPTION_LABELS } from "@/server/services/exceptions";
 
 export const metadata: Metadata = { title: "Exceptions" };
@@ -70,9 +71,7 @@ export default async function ExceptionsPage({
   }
   const sp = await searchParams;
   const tab = sp.tab === "resolved" ? "resolved" : sp.tab === "overtime" ? "overtime" : "open";
-  const scope = ctx.managedLocationIds
-    ? { employee: { locations: { some: { locationId: { in: ctx.managedLocationIds } } } } }
-    : {};
+  const scope = { employee: employeeScopeWhere(ctx) };
   const [rows, counts, overtime] = await Promise.all([
     tab === "overtime"
       ? []

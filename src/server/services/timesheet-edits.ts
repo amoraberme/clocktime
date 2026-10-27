@@ -5,7 +5,7 @@ import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import type { AppContext } from "../context";
 import { prisma } from "../db";
-import { employeeScopeWhere } from "../scope";
+import { assertEmployeeInScope, employeeScopeWhere } from "../scope";
 import { requireFeature } from "../context";
 import { recheckEntry } from "./exceptions";
 import { afterPunch } from "./punch-hooks";
@@ -56,11 +56,12 @@ function parseEdit(ctx: AppContext, input: EntryEdit) {
 }
 
 async function assertEditable(ctx: AppContext, employeeId: string, at: Date) {
-  const emp = await ctx.db.employee.findUnique({ where: { id: employeeId }, include: { locations: true } });
+  const emp = await ctx.db.employee.findUnique({ where: { id: employeeId } });
   if (!emp) throw new UserError("Employee not found.");
-  if (ctx.managedLocationIds && !emp.locations.some((l) => ctx.managedLocationIds!.includes(l.locationId))) {
-    throw new UserError("You can only edit people at locations you manage.");
-  }
+  if (ctx.isManager)
+    await assertEmployeeInScope(ctx, employeeId).catch(() => {
+      throw new UserError("You can only edit people at locations you manage.");
+    });
   if (!ctx.isManager && emp.id !== ctx.employee.id) throw new UserError("Not allowed.");
   const day = keyToUtcDate(dateKey(at, ctx.company.timezone));
   const locked = await ctx.db.timesheet.findFirst({

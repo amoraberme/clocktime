@@ -8,8 +8,10 @@ import { LocationEditor } from "./location-editor";
 
 export function AddLocation({
   features,
+  regions,
 }: {
   features: { geofence: boolean; ipLock: boolean; photoProof: boolean };
+  regions?: { id: string; name: string }[];
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -22,6 +24,7 @@ export function AddLocation({
       <DialogContent title="New location" className="max-w-2xl">
         <LocationEditor
           features={features}
+          regions={regions}
           onSaved={() => setOpen(false)}
           initial={{
             name: "",
@@ -33,6 +36,8 @@ export function AddLocation({
             autoClockOut: false,
             allowedIps: [],
             requirePhoto: false,
+            code: "",
+            regionId: null,
           }}
         />
       </DialogContent>

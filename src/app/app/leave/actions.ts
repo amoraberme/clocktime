@@ -46,7 +46,7 @@ export async function cancelLeaveAction(id: string) {
 
 export async function createLeaveTypeAction(data: unknown) {
   return run(async () => {
-    await createLeaveType(await getContextOrThrow("ADMIN"), data);
+    await createLeaveType(await getContextOrThrow("HR"), data);
     refresh();
   }, "Leave type added.");
 }
@@ -58,7 +58,7 @@ export async function setEntitlementAction(
   entitled: number,
 ) {
   return run(async () => {
-    await setEntitlement(await getContextOrThrow("ADMIN"), employeeId, leaveTypeId, year, entitled);
+    await setEntitlement(await getContextOrThrow("HR"), employeeId, leaveTypeId, year, entitled);
     refresh();
   }, "Entitlement updated.");
 }

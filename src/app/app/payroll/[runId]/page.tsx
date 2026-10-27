@@ -15,7 +15,7 @@ import { requireContext } from "@/server/context";
 import { runLabel } from "@/server/services/payroll";
 
 export default async function PayRunPage({ params }: { params: Promise<{ runId: string }> }) {
-  const ctx = await requireContext("ADMIN");
+  const ctx = await requireContext("HR");
   const { runId } = await params;
   const run = await ctx.db.payRun.findUnique({
     where: { id: runId },

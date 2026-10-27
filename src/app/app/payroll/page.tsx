@@ -19,7 +19,7 @@ export const metadata: Metadata = { title: "Payroll" };
 const STATUS_TONE = { DRAFT: "neutral", COMPUTED: "warning", FINALIZED: "info", PAID: "success" } as const;
 
 export default async function PayrollPage() {
-  const ctx = await requireContext("ADMIN");
+  const ctx = await requireContext("HR");
   if (!ctx.can("payroll")) {
     return (
       <>

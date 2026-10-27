@@ -12,8 +12,12 @@ export default async function ManagerLayout({ children }: { children: React.Reac
   const openExceptions = ctx.can("exceptions")
     ? await ctx.db.timeException.count({ where: { status: "OPEN", employee: employeeScopeWhere(ctx) } })
     : 0;
-  const nav = MANAGER_NAV.filter((i) => !i.adminOnly || ctx.isAdmin).map((i) => ({
+  const nav = MANAGER_NAV.filter(
+    (i) => (!i.minRole || (i.minRole === "HR" ? ctx.isHr : ctx.isAdmin)) && (!i.pay || ctx.canViewPay),
+  ).map((i) => ({
     ...i,
+    // HR's settings are the holiday calendar and audit log.
+    href: i.href === "/app/settings" && !ctx.isAdmin ? "/app/settings/holidays" : i.href,
     locked: i.feature ? !ctx.can(i.feature) : false,
     badge: i.href === "/app/exceptions" ? openExceptions : undefined,
   }));

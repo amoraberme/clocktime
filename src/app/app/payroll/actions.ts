@@ -21,7 +21,7 @@ const refresh = () => revalidatePath("/app/payroll", "layout");
 
 export async function createRunAction(date: string) {
   return run(async () => {
-    const ctx = await getContextOrThrow("ADMIN");
+    const ctx = await getContextOrThrow("HR");
     const r = await createPayRun(ctx, z.iso.date().parse(date));
     refresh();
     return r.id;
@@ -30,7 +30,7 @@ export async function createRunAction(date: string) {
 
 export async function createYearEndAction(year: number, payDate: string) {
   return run(async () => {
-    const ctx = await getContextOrThrow("ADMIN");
+    const ctx = await getContextOrThrow("HR");
     const r = await createYearEndRun(ctx, year, z.iso.date().parse(payDate));
     refresh();
     return r.id;
@@ -39,14 +39,14 @@ export async function createYearEndAction(year: number, payDate: string) {
 
 export async function recomputeAction(id: string) {
   return run(async () => {
-    await computePayRun(await getContextOrThrow("ADMIN"), id);
+    await computePayRun(await getContextOrThrow("HR"), id);
     refresh();
   }, "Recalculated with the latest timesheets.");
 }
 
 export async function finalizeAction(id: string) {
   return run(async () => {
-    await finalizePayRun(await getContextOrThrow("ADMIN"), id);
+    await finalizePayRun(await getContextOrThrow("HR"), id);
     refresh();
   }, "Payroll finalized. Timesheets are locked and payslips are ready.");
 }
@@ -54,7 +54,7 @@ export async function finalizeAction(id: string) {
 export async function markPaidAction(id: string, email: boolean) {
   return run(
     async () => {
-      await markPaid(await getContextOrThrow("ADMIN"), id, email);
+      await markPaid(await getContextOrThrow("HR"), id, email);
       refresh();
     },
     email ? "Marked paid and payslips emailed." : "Marked paid. Staff can see their payslips in the app.",
@@ -63,7 +63,7 @@ export async function markPaidAction(id: string, email: boolean) {
 
 export async function deleteRunAction(id: string) {
   return run(async () => {
-    await deletePayRun(await getContextOrThrow("ADMIN"), id);
+    await deletePayRun(await getContextOrThrow("HR"), id);
     refresh();
   }, "Draft deleted.");
 }
@@ -79,7 +79,7 @@ const adjSchema = z.object({
 
 export async function addAdjustmentAction(runId: string, data: unknown) {
   return run(async () => {
-    const ctx = await getContextOrThrow("ADMIN");
+    const ctx = await getContextOrThrow("HR");
     const a = adjSchema.parse(data);
     await addRunAdjustment(ctx, runId, { ...a, amount: pesosToCentavos(a.amount) });
     refresh();
@@ -88,7 +88,7 @@ export async function addAdjustmentAction(runId: string, data: unknown) {
 
 export async function removeAdjustmentAction(id: string, runId: string) {
   return run(async () => {
-    await removeAdjustment(await getContextOrThrow("ADMIN"), id, runId);
+    await removeAdjustment(await getContextOrThrow("HR"), id, runId);
     refresh();
   }, "Adjustment removed.");
 }
@@ -103,7 +103,7 @@ const loanSchema = z.object({
 
 export async function createLoanAction(data: unknown) {
   return run(async () => {
-    const ctx = await getContextOrThrow("ADMIN");
+    const ctx = await getContextOrThrow("HR");
     requireFeature(ctx, "payroll");
     const l = loanSchema.parse(data);
     if (l.amortization > l.principal)
@@ -133,7 +133,7 @@ export async function createLoanAction(data: unknown) {
 
 export async function cancelLoanAction(id: string) {
   return run(async () => {
-    const ctx = await getContextOrThrow("ADMIN");
+    const ctx = await getContextOrThrow("HR");
     await ctx.db.loan.update({ where: { id }, data: { status: "CANCELED" } });
     await writeAudit(actorFrom(ctx), { action: "loan.cancel", entityType: "Loan", entityId: id });
     refresh();

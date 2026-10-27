@@ -11,7 +11,7 @@ export default async function AuditPage({
 }: {
   searchParams: Promise<{ page?: string; entity?: string }>;
 }) {
-  const ctx = await requireContext("ADMIN");
+  const ctx = await requireContext("HR");
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const where = sp.entity ? { entityType: sp.entity } : {};

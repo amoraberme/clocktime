@@ -14,17 +14,17 @@ datasource db {
 // ───────────────────────────── Auth (Better Auth) ─────────────────────────────
 
 model User {
-  id              String    @id
-  name            String
-  email           String    @unique
-  emailVerified   Boolean   @default(false)
-  image           String?
-  activeCompanyId String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  sessions        Session[]
-  accounts        Account[]
-  employees       Employee[]
+  id                String             @id
+  name              String
+  email             String             @unique
+  emailVerified     Boolean            @default(false)
+  image             String?
+  activeCompanyId   String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  sessions          Session[]
+  accounts          Account[]
+  employees         Employee[]
   pushSubscriptions PushSubscription[]
 
   @@map("user")
@@ -83,6 +83,7 @@ enum Plan {
   FREE
   STARTER
   PRO
+  ENTERPRISE
 }
 
 enum PlanStatus {
@@ -118,6 +119,7 @@ model Company {
   updatedAt    DateTime     @updatedAt
 
   locations        Location[]
+  regions          Region[]
   departments      Department[]
   positions        Position[]
   employees        Employee[]
@@ -153,22 +155,38 @@ enum GeofenceMode {
   BLOCK
 }
 
+/// Groups branches for nationwide reporting (e.g. NCR, Visayas)
+model Region {
+  id        String     @id @default(cuid())
+  companyId String
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  code      String?
+  locations Location[]
+
+  @@unique([companyId, name])
+}
+
 model Location {
-  id            String       @id @default(cuid())
-  companyId     String
-  company       Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  name          String
-  address       String?
-  latitude      Float?
-  longitude     Float?
-  radiusMeters  Int          @default(150)
-  geofenceMode  GeofenceMode @default(OFF)
-  autoClockOut  Boolean      @default(false)
-  allowedIps    String[]     @default([])
-  requirePhoto  Boolean      @default(false)
-  archivedAt    DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id           String       @id @default(cuid())
+  companyId    String
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name         String
+  /// Branch code shown in reports and used by imports
+  code         String?
+  regionId     String?
+  region       Region?      @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  address      String?
+  latitude     Float?
+  longitude    Float?
+  radiusMeters Int          @default(150)
+  geofenceMode GeofenceMode @default(OFF)
+  autoClockOut Boolean      @default(false)
+  allowedIps   String[]     @default([])
+  requirePhoto Boolean      @default(false)
+  archivedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   employees   EmployeeLocation[]
   timeEntries TimeEntry[]
@@ -176,17 +194,29 @@ model Location {
   devices     Device[]
   recurrences ShiftRecurrence[]
 
+  @@unique([companyId, code])
   @@index([companyId])
 }
 
 model Department {
-  id        String     @id @default(cuid())
+  id        String               @id @default(cuid())
   companyId String
-  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company   Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name      String
   employees Employee[]
+  managers  EmployeeDepartment[]
 
   @@unique([companyId, name])
+}
+
+/// Departments a supervisor manages (none = every department in their branches)
+model EmployeeDepartment {
+  employeeId   String
+  employee     Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, departmentId])
 }
 
 model Position {
@@ -205,6 +235,11 @@ model Position {
 enum Role {
   OWNER
   ADMIN
+  /// Nationwide HR: people, attendance, final approvals and payroll; no billing or API keys
+  HR
+  /// Attendance review and corrections; no pay rates or payroll
+  TIMEKEEPER
+  /// Branch supervisor, limited to assigned branches and departments
   MANAGER
   EMPLOYEE
 }
@@ -257,6 +292,18 @@ model Employee {
   /// HMAC of companyId+PIN, lets the kiosk find the employee without scanning hashes
   pinLookup           String?
   qrToken             String         @unique @default(cuid())
+  /// User ID enrolled on biometric terminals (defaults to the employee number)
+  deviceUserId        String?
+  /// RFID card number, AES-GCM encrypted so it can be pushed to terminals
+  cardEnc             String?
+  /// HMAC of companyId+card number for lookups at the kiosk and terminals
+  cardLookup          String?
+  /// Drivers, sales and other field staff: no branch geofence, stricter GPS and selfie rules
+  fieldWork           Boolean        @default(false)
+  /// May punch at any branch's terminal without being flagged
+  roaming             Boolean        @default(false)
+  biometricConsentAt  DateTime?
+  locationConsentAt   DateTime?
   departmentId        String?
   department          Department?    @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   positionId          String?
@@ -267,30 +314,33 @@ model Employee {
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
-  locations        EmployeeLocation[]
-  invitations      Invitation[]
-  devices          Device[]
-  timeEntries      TimeEntry[]
-  shifts           Shift[]
-  recurrences      ShiftRecurrence[]
-  swapRequests     ShiftSwapRequest[] @relation("SwapRequester")
-  swapTargets      ShiftSwapRequest[] @relation("SwapTarget")
-  openShiftClaims  OpenShiftClaim[]
-  availabilities   Availability[]
-  leaveBalances    LeaveBalance[]
-  leaveRequests    LeaveRequest[]
-  overtimeRequests OvertimeRequest[]
-  exceptions       TimeException[]
-  timesheets       Timesheet[]
-  payRunItems      PayRunItem[]
-  payAdjustments   PayAdjustment[]
-  loans            Loan[]
-  notifications    Notification[]
-  punches          Punch[]
+  locations          EmployeeLocation[]
+  managedDepartments EmployeeDepartment[]
+  invitations        Invitation[]
+  devices            Device[]
+  timeEntries        TimeEntry[]
+  shifts             Shift[]
+  recurrences        ShiftRecurrence[]
+  swapRequests       ShiftSwapRequest[]   @relation("SwapRequester")
+  swapTargets        ShiftSwapRequest[]   @relation("SwapTarget")
+  openShiftClaims    OpenShiftClaim[]
+  availabilities     Availability[]
+  leaveBalances      LeaveBalance[]
+  leaveRequests      LeaveRequest[]
+  overtimeRequests   OvertimeRequest[]
+  exceptions         TimeException[]
+  timesheets         Timesheet[]
+  payRunItems        PayRunItem[]
+  payAdjustments     PayAdjustment[]
+  loans              Loan[]
+  notifications      Notification[]
+  punches            Punch[]
 
   @@unique([companyId, userId])
   @@unique([companyId, pinLookup])
   @@unique([companyId, employeeNo])
+  @@unique([companyId, deviceUserId])
+  @@unique([companyId, cardLookup])
   @@index([companyId, status])
 }
 
@@ -584,19 +634,19 @@ model Availability {
 // ───────────────────────────── Leave & overtime ─────────────────────────────
 
 model LeaveType {
-  id          String         @id @default(cuid())
-  companyId   String
-  company     Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  name        String
-  code        String
-  paid        Boolean        @default(true)
+  id         String         @id @default(cuid())
+  companyId  String
+  company    Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name       String
+  code       String
+  paid       Boolean        @default(true)
   /// Days granted per year (0 = unlimited/unpaid tracking only)
-  annualDays  Float          @default(0)
+  annualDays Float          @default(0)
   /// Service Incentive Leave: requires 1 year of service, convertible to cash
-  isSil       Boolean        @default(false)
-  archivedAt  DateTime?
-  balances    LeaveBalance[]
-  requests    LeaveRequest[]
+  isSil      Boolean        @default(false)
+  archivedAt DateTime?
+  balances   LeaveBalance[]
+  requests   LeaveRequest[]
 
   @@unique([companyId, code])
 }
@@ -757,23 +807,23 @@ enum PayRunStatus {
 }
 
 model PayRun {
-  id            String       @id @default(cuid())
+  id            String          @id @default(cuid())
   companyId     String
-  company       Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  kind          PayRunKind   @default(REGULAR)
-  periodStart   DateTime     @db.Date
-  periodEnd     DateTime     @db.Date
-  payDate       DateTime     @db.Date
+  company       Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  kind          PayRunKind      @default(REGULAR)
+  periodStart   DateTime        @db.Date
+  periodEnd     DateTime        @db.Date
+  payDate       DateTime        @db.Date
   /// 1 or 2 for semi-monthly payroll (used for contribution splits)
-  cutoffIndex   Int          @default(1)
-  status        PayRunStatus @default(DRAFT)
-  totals        Json         @default("{}")
+  cutoffIndex   Int             @default(1)
+  status        PayRunStatus    @default(DRAFT)
+  totals        Json            @default("{}")
   computedAt    DateTime?
   finalizedAt   DateTime?
   finalizedById String?
   paidAt        DateTime?
   createdById   String?
-  createdAt     DateTime     @default(now())
+  createdAt     DateTime        @default(now())
   items         PayRunItem[]
   adjustments   PayAdjustment[]
 
@@ -781,37 +831,37 @@ model PayRun {
 }
 
 model PayRunItem {
-  id               String   @id @default(cuid())
-  payRunId         String
-  payRun           PayRun   @relation(fields: [payRunId], references: [id], onDelete: Cascade)
-  companyId        String
-  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employeeId       String
-  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id              String    @id @default(cuid())
+  payRunId        String
+  payRun          PayRun    @relation(fields: [payRunId], references: [id], onDelete: Cascade)
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   /// Minutes by category (regular, ot, nd, restDay, holiday…)
-  minutes          Json     @default("{}")
+  minutes         Json      @default("{}")
   /// Earnings lines [{code,label,minutes?,amount}]
-  earnings         Json     @default("[]")
+  earnings        Json      @default("[]")
   /// Deduction lines [{code,label,amount}]
-  deductions       Json     @default("[]")
-  grossCentavos    Int      @default(0)
+  deductions      Json      @default("[]")
+  grossCentavos   Int       @default(0)
   /// Basic pay earned this period (base for 13th-month pay)
-  basicCentavos    Int      @default(0)
-  warnings         Json     @default("[]")
-  sssEe            Int      @default(0)
-  sssEr            Int      @default(0)
-  sssEc            Int      @default(0)
-  philhealthEe     Int      @default(0)
-  philhealthEr     Int      @default(0)
-  pagibigEe        Int      @default(0)
-  pagibigEr        Int      @default(0)
-  taxableCentavos  Int      @default(0)
-  withholdingTax   Int      @default(0)
-  otherDeductions  Int      @default(0)
-  netCentavos      Int      @default(0)
-  tableVersions    Json     @default("{}")
-  payslipKey       String?
-  emailedAt        DateTime?
+  basicCentavos   Int       @default(0)
+  warnings        Json      @default("[]")
+  sssEe           Int       @default(0)
+  sssEr           Int       @default(0)
+  sssEc           Int       @default(0)
+  philhealthEe    Int       @default(0)
+  philhealthEr    Int       @default(0)
+  pagibigEe       Int       @default(0)
+  pagibigEr       Int       @default(0)
+  taxableCentavos Int       @default(0)
+  withholdingTax  Int       @default(0)
+  otherDeductions Int       @default(0)
+  netCentavos     Int       @default(0)
+  tableVersions   Json      @default("{}")
+  payslipKey      String?
+  emailedAt       DateTime?
 
   @@unique([payRunId, employeeId])
   @@index([employeeId])
@@ -956,10 +1006,10 @@ model Subscription {
 }
 
 model BillingInvoice {
-  id                String    @id @default(cuid())
+  id                String           @id @default(cuid())
   companyId         String
-  company           Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  providerInvoiceId String?   @unique
+  company           Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  providerInvoiceId String?          @unique
   description       String
   amountCentavos    Int
   /// open | paid | expired
@@ -972,7 +1022,7 @@ model BillingInvoice {
   periodEnd         DateTime?
   paidAt            DateTime?
   checkoutUrl       String?
-  createdAt         DateTime  @default(now())
+  createdAt         DateTime         @default(now())
 
   @@index([companyId])
 }

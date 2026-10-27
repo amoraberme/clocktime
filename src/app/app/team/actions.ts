@@ -48,6 +48,12 @@ function employeeFromForm(formData: FormData) {
     pagibig: get("pagibig") || undefined,
     bankName: get("bankName"),
     bankAccount: get("bankAccount") || undefined,
+    deviceUserId: get("deviceUserId"),
+    cardNumber: get("cardNumber") || undefined,
+    clearCard: formData.get("clearCard") === "on",
+    fieldWork: formData.get("fieldWork") === "on",
+    roaming: formData.get("roaming") === "on",
+    managedDepartmentNames: formData.getAll("managedDepartmentNames").map(String).filter(Boolean),
   };
 }
 

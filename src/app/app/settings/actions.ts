@@ -73,7 +73,7 @@ const holidaySchema = z.object({
 
 export async function addHolidayAction(input: unknown) {
   return run(async () => {
-    const ctx = await getContextOrThrow("ADMIN");
+    const ctx = await getContextOrThrow("HR");
     const h = holidaySchema.parse(input);
     const exists = await prisma.holiday.findFirst({
       where: { companyId: ctx.company.id, date: keyToUtcDate(h.date), name: h.name },
@@ -89,7 +89,7 @@ export async function addHolidayAction(input: unknown) {
 
 export async function deleteHolidayAction(id: string) {
   return run(async () => {
-    const ctx = await getContextOrThrow("ADMIN");
+    const ctx = await getContextOrThrow("HR");
     const h = await prisma.holiday.findFirst({ where: { id, companyId: ctx.company.id } });
     if (!h) throw new UserError("Only your company's own holidays can be removed.");
     await prisma.holiday.delete({ where: { id } });

@@ -30,7 +30,7 @@ async function audit(
 }
 
 const planSchema = z.object({
-  plan: z.enum(["FREE", "STARTER", "PRO"]),
+  plan: z.enum(["FREE", "STARTER", "PRO", "ENTERPRISE"]),
   planStatus: z.enum(["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED"]),
   paidThrough: z.iso.date().nullable(),
   trialEndsAt: z.iso.date().nullable(),

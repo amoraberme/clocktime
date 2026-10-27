@@ -35,7 +35,8 @@ export function hasFeature(plan: Plan, feature: Feature) {
 export function planFor(feature: Feature): Plan {
   if (PLANS.FREE.features.includes(feature)) return "FREE";
   if (PLANS.STARTER.features.includes(feature)) return "STARTER";
-  return "PRO";
+  if (PLANS.PRO.features.includes(feature)) return "PRO";
+  return "ENTERPRISE";
 }
 
 export function canAddSeat(plan: Plan, activeSeats: number) {

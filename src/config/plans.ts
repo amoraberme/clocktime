@@ -25,7 +25,17 @@ export type Feature =
   | "compliance"
   | "payroll"
   | "insights"
-  | "api";
+  | "api"
+  | "attendanceReports"
+  | "biometricDevices"
+  | "rfid"
+  | "multiLevelApproval"
+  | "hrRoles"
+  | "regions"
+  | "fieldMode"
+  | "webhooks"
+  | "exportTemplates"
+  | "consolidatedReports";
 
 export type PlanConfig = {
   id: Plan;
@@ -41,6 +51,8 @@ export type PlanConfig = {
   maxLocations: number | null;
   features: Feature[];
   highlights: string[];
+  /** Priced per quote and invoiced (no self-serve checkout). */
+  quoteOnly?: boolean;
 };
 
 const FREE_FEATURES: Feature[] = ["clock", "basicSchedule", "timesheets", "csvExport"];
@@ -59,6 +71,7 @@ const STARTER_FEATURES: Feature[] = [
   "approvals",
   "exceptions",
   "notifications",
+  "attendanceReports",
 ];
 
 const PRO_FEATURES: Feature[] = [
@@ -71,6 +84,19 @@ const PRO_FEATURES: Feature[] = [
   "payroll",
   "insights",
   "api",
+];
+
+const ENTERPRISE_FEATURES: Feature[] = [
+  ...PRO_FEATURES,
+  "biometricDevices",
+  "rfid",
+  "multiLevelApproval",
+  "hrRoles",
+  "regions",
+  "fieldMode",
+  "webhooks",
+  "exportTemplates",
+  "consolidatedReports",
 ];
 
 // Prices are placeholders pending confirmation; change them here only.
@@ -128,9 +154,31 @@ export const PLANS: Record<Plan, PlanConfig> = {
       "Labor insights & API access",
     ],
   },
+  ENTERPRISE: {
+    id: "ENTERPRISE",
+    name: "Enterprise",
+    tagline: "Nationwide timekeeping with biometric terminals",
+    // Quoted per company; the super-admin assigns this plan and invoices it.
+    monthlyBaseCentavos: 0,
+    includedSeats: 0,
+    extraSeatCentavos: 0,
+    maxSeats: null,
+    maxLocations: null,
+    features: ENTERPRISE_FEATURES,
+    quoteOnly: true,
+    highlights: [
+      "Fingerprint & RFID terminals synced to one employee record",
+      "Regions, branches, HR and timekeeper roles",
+      "Two-level approvals for OT, leave, schedules & corrections",
+      "Cutoff DTR reports consolidated nationwide",
+      "Field mode for drivers & sales, webhooks & payroll export templates",
+    ],
+  },
 };
 
 export const TRIAL_DAYS = 14;
+/** Where Enterprise enquiries go. */
+export const SALES_EMAIL = process.env.NEXT_PUBLIC_SALES_EMAIL || "sales@clocktime.ph";
 /** Annual billing discount, in percent. */
 export const ANNUAL_DISCOUNT_PERCENT = 20;
 /** Days a past-due company keeps paid features before dropping to Free. */

@@ -14,6 +14,7 @@ import { formatPeso } from "@/lib/money";
 import { formatKey, formatMinutes, formatTime, dateKey, utcDateToKey } from "@/lib/time";
 import { fullName } from "@/lib/utils";
 import { requireContext } from "@/server/context";
+import { employeeScopeWhere } from "@/server/scope";
 import { decrypt, mask } from "@/server/crypto";
 import {
   computeEmployeePeriod,
@@ -30,9 +31,15 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function EmployeePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requireContext("MANAGER");
-  const emp = await ctx.db.employee.findUnique({
-    where: { id },
-    include: { position: true, department: true, locations: true, user: { select: { email: true } } },
+  const emp = await ctx.db.employee.findFirst({
+    where: { id, ...employeeScopeWhere(ctx) },
+    include: {
+      position: true,
+      department: true,
+      locations: true,
+      managedDepartments: { include: { department: { select: { name: true } } } },
+      user: { select: { email: true } },
+    },
   });
   if (!emp) notFound();
   const tz = ctx.company.timezone;
@@ -98,7 +105,7 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
         />
         <Stat label="Overtime" value={formatMinutes(summary.hours.totals.overtimeMinutes)} />
         <Stat label="Late" value={formatMinutes(summary.hours.totals.lateMinutes)} />
-        <Stat label="Gross pay estimate" value={formatPeso(summary.gross.gross)} />
+        {ctx.canViewPay ? <Stat label="Gross pay estimate" value={formatPeso(summary.gross.gross)} /> : null}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
@@ -107,34 +114,51 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
             <CardTitle>Profile & pay</CardTitle>
           </CardHeader>
           <CardContent>
-            <EditEmployee
-              values={{
-                id: emp.id,
-                firstName: emp.firstName,
-                lastName: emp.lastName,
-                email: emp.email,
-                phone: emp.phone,
-                employeeNo: emp.employeeNo,
-                role: emp.role,
-                payType: emp.payType,
-                rate: emp.rateCentavos / 100,
-                workDaysPerYear: emp.workDaysPerYear,
-                isMinimumWageEarner: emp.isMinimumWageEarner,
-                timeExempt: emp.timeExempt,
-                restDays: emp.restDays,
-                hireDate: emp.hireDate ? utcDateToKey(emp.hireDate) : null,
-                departmentName: emp.department?.name,
-                positionName: emp.position?.name,
-                locationIds: emp.locations.map((l) => l.locationId),
-                bankName: emp.bankName,
-                masked,
-              }}
-              locations={locations}
-              departments={departments.map((d) => d.name)}
-              positions={positions.map((p) => p.name)}
-              canAssignRoles={ctx.isAdmin}
-              isOwner={emp.role === "OWNER"}
-            />
+            {!ctx.canViewPay ? (
+              <p className="text-muted-foreground text-sm">
+                Profile and pay details are managed by HR and admins.
+              </p>
+            ) : (
+              <EditEmployee
+                values={{
+                  id: emp.id,
+                  firstName: emp.firstName,
+                  lastName: emp.lastName,
+                  email: emp.email,
+                  phone: emp.phone,
+                  employeeNo: emp.employeeNo,
+                  role: emp.role,
+                  payType: emp.payType,
+                  rate: emp.rateCentavos / 100,
+                  workDaysPerYear: emp.workDaysPerYear,
+                  isMinimumWageEarner: emp.isMinimumWageEarner,
+                  timeExempt: emp.timeExempt,
+                  restDays: emp.restDays,
+                  hireDate: emp.hireDate ? utcDateToKey(emp.hireDate) : null,
+                  departmentName: emp.department?.name,
+                  positionName: emp.position?.name,
+                  locationIds: emp.locations.map((l) => l.locationId),
+                  bankName: emp.bankName,
+                  deviceUserId: emp.deviceUserId,
+                  cardLast4: emp.cardEnc ? (decrypt(emp.cardEnc) ?? "").slice(-4) : null,
+                  fieldWork: emp.fieldWork,
+                  roaming: emp.roaming,
+                  managedDepartmentNames: emp.managedDepartments.map((d) => d.department.name),
+                  masked,
+                }}
+                locations={locations}
+                departments={departments.map((d) => d.name)}
+                positions={positions.map((p) => p.name)}
+                canAssignRoles={ctx.isAdmin || ctx.isHr}
+                isOwner={emp.role === "OWNER"}
+                features={{
+                  hrRoles: ctx.can("hrRoles"),
+                  terminals: ctx.can("biometricDevices"),
+                  rfid: ctx.can("rfid"),
+                  fieldMode: ctx.can("fieldMode"),
+                }}
+              />
+            )}
           </CardContent>
         </Card>
         <div className="space-y-6">

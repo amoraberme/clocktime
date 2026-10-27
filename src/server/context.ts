@@ -10,7 +10,17 @@ import { auth } from "./auth";
 import { prisma } from "./db";
 import { tenantDb } from "./tenant";
 
-const ROLE_RANK: Record<Role, number> = { EMPLOYEE: 1, MANAGER: 2, ADMIN: 3, OWNER: 4 };
+// HR sits below ADMIN: nationwide people, payroll and approvals, but no billing, API keys or settings.
+const ROLE_RANK: Record<Role, number> = { EMPLOYEE: 1, MANAGER: 2, TIMEKEEPER: 2, HR: 3, ADMIN: 4, OWNER: 5 };
+
+export type Approval = "leave" | "overtime" | "attendance" | "schedule";
+
+/** Who may approve each kind of request. Timekeepers handle attendance and schedules only. */
+export function canApprove(role: Role, kind: Approval) {
+  if (role === "EMPLOYEE") return false;
+  if (role === "TIMEKEEPER") return kind === "attendance" || kind === "schedule";
+  return true;
+}
 
 export function roleAtLeast(role: Role, min: Role) {
   return ROLE_RANK[role] >= ROLE_RANK[min];
@@ -39,7 +49,11 @@ async function loadContext() {
   if (!session) return null;
   const memberships = await prisma.employee.findMany({
     where: { userId: session.user.id, status: { not: "ARCHIVED" } },
-    include: { company: true, locations: { select: { locationId: true } } },
+    include: {
+      company: true,
+      locations: { select: { locationId: true } },
+      managedDepartments: { select: { departmentId: true } },
+    },
     orderBy: { createdAt: "asc" },
   });
   if (memberships.length === 0) return { user: session.user, memberships, current: null };
@@ -54,13 +68,18 @@ const buildContext = cache(async () => {
   const loaded = await loadContext();
   if (!loaded?.current) return null;
   const { user, memberships, current } = loaded;
-  const { company, locations, ...employee } = current;
+  const { company, locations, managedDepartments, ...employee } = current;
   const plan = effectivePlan(company);
   const role = employee.role;
   const isManager = roleAtLeast(role, "MANAGER");
-  // Owners/admins see every location; managers only those assigned (none assigned = all).
+  // Owners/admins see every location; others only those assigned (none assigned = all).
   const managedLocationIds =
     roleAtLeast(role, "ADMIN") || locations.length === 0 ? null : locations.map((l) => l.locationId);
+  // Supervisors can also be limited to departments (none assigned = all departments).
+  const managedDepartmentIds =
+    roleAtLeast(role, "ADMIN") || managedDepartments.length === 0
+      ? null
+      : managedDepartments.map((d) => d.departmentId);
   return {
     user,
     company,
@@ -69,7 +88,12 @@ const buildContext = cache(async () => {
     plan,
     isManager,
     isAdmin: roleAtLeast(role, "ADMIN"),
+    isHr: roleAtLeast(role, "HR"),
+    /** Timekeepers review attendance without seeing pay rates or amounts. */
+    canViewPay: role !== "TIMEKEEPER",
+    approves: (kind: Approval) => canApprove(role, kind),
     managedLocationIds,
+    managedDepartmentIds,
     settings: parseSettings(company.settings),
     db: tenantDb(company.id),
     memberships: memberships.map((m) => ({ companyId: m.companyId, name: m.company.name, role: m.role })),

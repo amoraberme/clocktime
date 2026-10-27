@@ -4,6 +4,7 @@ import { prisma } from "./db";
 /** Models with a required companyId column. Holiday (nullable companyId) is scoped by hand. */
 const TENANT_MODELS = new Set([
   "Location",
+  "Region",
   "Department",
   "Position",
   "Employee",

@@ -5,6 +5,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { canAddSeat, effectivePlan } from "@/lib/entitlements";
 import { pesosToCentavos } from "@/lib/money";
 import { keyToUtcDate } from "@/lib/time";
+import { normalizeCard, normalizeUserId } from "@/lib/identifiers";
 import { fullName } from "@/lib/utils";
 import {
   csvRowToInput,
@@ -15,8 +16,9 @@ import {
 import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import type { AppContext } from "../context";
-import { encrypt, hashSecret, pinLookup, randomToken, sha256 } from "../crypto";
+import { cardLookup, encrypt, hashSecret, pinLookup, randomToken, sha256 } from "../crypto";
 import { prisma } from "../db";
+import { assertEmployeeInScope } from "../scope";
 import { escapeHtml, layout, sendEmail } from "../email";
 import { activeSeatCount, splitName } from "./company";
 
@@ -86,6 +88,52 @@ function sensitiveData(input: EmployeeInput) {
   return out;
 }
 
+/**
+ * Terminal user ID, RFID card and field/roaming flags. Each is ignored unless the plan includes it,
+ * and IDs must be unique within the company so every badge maps to exactly one person.
+ */
+async function attendanceData(ctx: AppContext, input: EmployeeInput, employeeId?: string) {
+  const out: Record<string, string | boolean | null> = {};
+  const others = employeeId ? { id: { not: employeeId } } : {};
+  if (ctx.can("biometricDevices")) {
+    const userId = input.deviceUserId ? normalizeUserId(input.deviceUserId) : null;
+    if (userId) {
+      const taken = await ctx.db.employee.findFirst({ where: { deviceUserId: userId, ...others } });
+      if (taken) throw new UserError(`Terminal ID ${userId} is already used by ${fullName(taken)}.`);
+    }
+    out.deviceUserId = userId;
+  }
+  if (ctx.can("rfid")) {
+    if (input.cardNumber) {
+      const card = normalizeCard(input.cardNumber);
+      const lookup = cardLookup(ctx.company.id, card);
+      const taken = await ctx.db.employee.findFirst({ where: { cardLookup: lookup, ...others } });
+      if (taken) throw new UserError(`That card is already assigned to ${fullName(taken)}.`);
+      out.cardEnc = encrypt(card);
+      out.cardLookup = lookup;
+    } else if (input.clearCard) {
+      out.cardEnc = null;
+      out.cardLookup = null;
+    }
+  }
+  if (ctx.can("fieldMode")) {
+    out.fieldWork = input.fieldWork;
+    out.roaming = input.roaming;
+  }
+  return out;
+}
+
+/** Departments a supervisor manages; only existing departments count. */
+async function managedDepartmentIds(ctx: AppContext, input: EmployeeInput) {
+  if (input.role === "EMPLOYEE" || input.role === "ADMIN" || input.managedDepartmentNames.length === 0)
+    return [];
+  const rows = await ctx.db.department.findMany({
+    where: { name: { in: input.managedDepartmentNames } },
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
 async function validLocationIds(ctx: AppContext, ids: string[]) {
   if (ids.length === 0) {
     const first = await ctx.db.location.findFirst({
@@ -98,12 +146,17 @@ async function validLocationIds(ctx: AppContext, ids: string[]) {
   return rows.map((r) => r.id);
 }
 
+/** Admins assign any role; HR assigns supervisors and timekeepers. HR/timekeeper roles need Enterprise. */
 function assertCanAssignRole(ctx: AppContext, role: EmployeeInput["role"]) {
-  if (role !== "EMPLOYEE" && !ctx.isAdmin)
-    throw new UserError("Only owners and admins can add managers or admins.");
+  if ((role === "HR" || role === "TIMEKEEPER") && !ctx.can("hrRoles"))
+    throw new UserError("HR and timekeeper roles need the Enterprise plan.");
+  if (role === "EMPLOYEE" || ctx.isAdmin) return;
+  if (ctx.isHr && (role === "MANAGER" || role === "TIMEKEEPER")) return;
+  throw new UserError("Only owners and admins can add managers or admins.");
 }
 
 export async function addEmployee(ctx: AppContext, raw: unknown, opts: { sendInvite?: boolean } = {}) {
+  if (!ctx.canViewPay) throw new UserError("Ask HR or an admin to add people.");
   const input = employeeInputSchema.parse(raw);
   assertCanAssignRole(ctx, input.role);
   await ensureSeat(ctx);
@@ -113,17 +166,20 @@ export async function addEmployee(ctx: AppContext, raw: unknown, opts: { sendInv
     });
     if (dupe) throw new UserError(`${input.email} is already on your team.`);
   }
-  const [departmentId, positionId, locationIds, employeeNo] = await Promise.all([
+  const [departmentId, positionId, locationIds, employeeNo, attendance, managedDepts] = await Promise.all([
     resolveNamed(ctx.company.id, "department", input.departmentName),
     resolveNamed(ctx.company.id, "position", input.positionName),
     validLocationIds(ctx, input.locationIds),
     input.employeeNo ? Promise.resolve(input.employeeNo) : nextEmployeeNo(ctx.company.id),
+    attendanceData(ctx, input),
+    managedDepartmentIds(ctx, input),
   ]);
   const count = await prisma.employee.count({ where: { companyId: ctx.company.id } });
   const employee = await prisma.employee.create({
     data: {
       ...employeeData(input),
       ...sensitiveData(input),
+      ...attendance,
       companyId: ctx.company.id,
       employeeNo,
       departmentId,
@@ -131,6 +187,7 @@ export async function addEmployee(ctx: AppContext, raw: unknown, opts: { sendInv
       status: input.email ? "INVITED" : "ACTIVE",
       color: PALETTE[count % PALETTE.length]!,
       locations: { create: locationIds.map((locationId) => ({ locationId })) },
+      managedDepartments: { create: managedDepts.map((departmentId) => ({ departmentId })) },
     },
   });
   await writeAudit(actorFrom(ctx), {
@@ -149,6 +206,7 @@ export async function addEmployee(ctx: AppContext, raw: unknown, opts: { sendInv
 }
 
 export async function updateEmployee(ctx: AppContext, employeeId: string, raw: unknown) {
+  if (!ctx.canViewPay) throw new UserError("Ask HR or an admin to change profiles and pay.");
   const input = employeeInputSchema.parse(raw);
   const before = await ctx.db.employee.findUnique({
     where: { id: employeeId },
@@ -160,21 +218,23 @@ export async function updateEmployee(ctx: AppContext, employeeId: string, raw: u
   } else {
     assertCanAssignRole(ctx, input.role);
   }
-  if (!ctx.isAdmin && before.role !== "EMPLOYEE") throw new UserError("Only admins can edit managers.");
-  if (
-    ctx.managedLocationIds &&
-    !before.locations.some((l) => ctx.managedLocationIds!.includes(l.locationId))
-  ) {
+  const hrEditable = ctx.isHr && (before.role === "MANAGER" || before.role === "TIMEKEEPER");
+  if (!ctx.isAdmin && !hrEditable && before.role !== "EMPLOYEE")
+    throw new UserError("Only admins can edit managers.");
+  await assertEmployeeInScope(ctx, employeeId).catch(() => {
     throw new UserError("You can only edit people at locations you manage.");
-  }
-  const [departmentId, positionId, locationIds] = await Promise.all([
+  });
+  const [departmentId, positionId, locationIds, attendance, managedDepts] = await Promise.all([
     resolveNamed(ctx.company.id, "department", input.departmentName),
     resolveNamed(ctx.company.id, "position", input.positionName),
     validLocationIds(ctx, input.locationIds),
+    attendanceData(ctx, input, employeeId),
+    managedDepartmentIds(ctx, input),
   ]);
   const data = {
     ...employeeData(input),
     ...sensitiveData(input),
+    ...attendance,
     role: before.role === "OWNER" ? "OWNER" : input.role,
     employeeNo: input.employeeNo ?? before.employeeNo,
     departmentId,
@@ -184,6 +244,10 @@ export async function updateEmployee(ctx: AppContext, employeeId: string, raw: u
     await tx.employeeLocation.deleteMany({ where: { employeeId } });
     await tx.employeeLocation.createMany({
       data: locationIds.map((locationId) => ({ employeeId, locationId })),
+    });
+    await tx.employeeDepartment.deleteMany({ where: { employeeId } });
+    await tx.employeeDepartment.createMany({
+      data: managedDepts.map((departmentId) => ({ employeeId, departmentId })),
     });
     return tx.employee.update({ where: { id: employeeId, companyId: ctx.company.id }, data });
   });

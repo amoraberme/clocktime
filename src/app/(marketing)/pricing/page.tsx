@@ -5,7 +5,8 @@ import { PLANS, type Feature } from "@/config/plans";
 
 export const metadata: Metadata = {
   title: "Pricing",
-  description: "Free for 2 people. Starter and Pro plans with one price for all your locations.",
+  description:
+    "Free for 2 people. Starter and Pro plans with one price for all your locations, and Enterprise for nationwide teams.",
 };
 
 const ROWS: [string, Feature][] = [
@@ -24,7 +25,16 @@ const ROWS: [string, Feature][] = [
   ["Payslips, 13th month, bank file", "payroll"],
   ["Labor insights", "insights"],
   ["REST API", "api"],
+  ["Cutoff DTR reports (Excel/CSV)", "attendanceReports"],
+  ["Fingerprint & RFID terminals", "biometricDevices"],
+  ["Regions, HR & timekeeper roles", "hrRoles"],
+  ["Two-level approvals", "multiLevelApproval"],
+  ["Field mode for drivers & sales", "fieldMode"],
+  ["Nationwide consolidated reports", "consolidatedReports"],
+  ["Webhooks & payroll export templates", "webhooks"],
 ];
+
+const TIERS = ["FREE", "STARTER", "PRO", "ENTERPRISE"] as const;
 
 export default function PricingPage() {
   return (
@@ -40,7 +50,7 @@ export default function PricingPage() {
           <THead>
             <tr>
               <TH>Feature</TH>
-              {(["FREE", "STARTER", "PRO"] as const).map((p) => (
+              {TIERS.map((p) => (
                 <TH key={p} className="text-center">
                   {PLANS[p].name}
                 </TH>
@@ -51,7 +61,7 @@ export default function PricingPage() {
             {ROWS.map(([label, f], i) => (
               <TR key={i}>
                 <TD>{label}</TD>
-                {(["FREE", "STARTER", "PRO"] as const).map((p) => (
+                {TIERS.map((p) => (
                   <TD key={p} className="text-center">
                     {PLANS[p].features.includes(f) ? (
                       <span className="text-primary">✓</span>
@@ -65,6 +75,7 @@ export default function PricingPage() {
             <TR>
               <TD>Team size</TD>
               <TD className="text-center">2</TD>
+              <TD className="text-center">Unlimited</TD>
               <TD className="text-center">Unlimited</TD>
               <TD className="text-center">Unlimited</TD>
             </TR>

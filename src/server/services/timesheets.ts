@@ -16,6 +16,7 @@ import {
 } from "@/lib/time";
 import type { AppContext } from "../context";
 import { prisma } from "../db";
+import { employeeScopeWhere } from "../scope";
 
 type Ctx = Pick<AppContext, "company" | "settings" | "plan" | "can">;
 
@@ -228,9 +229,7 @@ export async function teamPeriodSummary(ctx: AppContext, period: { start: string
   const employees = await ctx.db.employee.findMany({
     where: {
       status: { not: "ARCHIVED" },
-      ...(ctx.managedLocationIds
-        ? { locations: { some: { locationId: { in: ctx.managedLocationIds } } } }
-        : {}),
+      ...employeeScopeWhere(ctx),
     },
     include: { position: { select: { name: true, color: true } } },
     orderBy: [{ firstName: "asc" }, { lastName: "asc" }],

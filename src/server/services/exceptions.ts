@@ -9,7 +9,7 @@ import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import type { AppContext } from "../context";
 import { prisma } from "../db";
-import { assertEmployeeInScope } from "../scope";
+import { assertApprover, assertEmployeeInScope } from "../scope";
 import { notifyManagers } from "./notifications";
 import { approveOvertimeFor } from "./overtime";
 
@@ -310,6 +310,7 @@ export async function resolveException(
   const x = await ctx.db.timeException.findUnique({ where: { id } });
   if (!x) throw new UserError("Exception not found.");
   if (x.status !== "OPEN") throw new UserError("Already handled.");
+  assertApprover(ctx, "attendance");
   await assertEmployeeInScope(ctx, x.employeeId);
   if (action === "approve_overtime") {
     if (x.type !== "UNAPPROVED_OVERTIME") throw new UserError("Only overtime exceptions can be approved.");

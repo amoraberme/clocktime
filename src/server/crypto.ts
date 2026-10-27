@@ -64,6 +64,13 @@ export function pinLookup(companyId: string, pin: string) {
   return createHmac("sha256", env().BETTER_AUTH_SECRET).update(`${companyId}:${pin}`).digest("base64url");
 }
 
+/** HMAC of companyId + normalized card number, for unique lookups without storing it in plain text. */
+export function cardLookup(companyId: string, card: string) {
+  return createHmac("sha256", env().BETTER_AUTH_SECRET)
+    .update(`card:${companyId}:${card}`)
+    .digest("base64url");
+}
+
 export function randomToken(bytes = 32) {
   return randomBytes(bytes).toString("base64url");
 }

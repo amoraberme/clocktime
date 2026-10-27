@@ -14,7 +14,7 @@ const TYPE = {
 } as const;
 
 export default async function HolidaysPage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
-  const ctx = await requireContext("ADMIN");
+  const ctx = await requireContext("HR");
   const { year: y } = await searchParams;
   const year = Number(y) || Number(dateKey(new Date(), ctx.company.timezone).slice(0, 4));
   const holidays = await prisma.holiday.findMany({

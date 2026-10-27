@@ -11,7 +11,7 @@ const peso = (c: number) => Number(centavosToPesos(c).toFixed(2));
 export async function GET(req: Request, { params }: { params: Promise<{ runId: string }> }) {
   let ctx;
   try {
-    ctx = await getContextOrThrow("ADMIN");
+    ctx = await getContextOrThrow("HR");
   } catch {
     return new Response("Unauthorized", { status: 401 });
   }

@@ -26,6 +26,11 @@ export type EmployeeFormValues = {
   positionName?: string | null;
   locationIds?: string[];
   bankName?: string | null;
+  deviceUserId?: string | null;
+  cardLast4?: string | null;
+  fieldWork?: boolean;
+  roaming?: boolean;
+  managedDepartmentNames?: string[];
   masked?: { tin: string; sss: string; philhealth: string; pagibig: string; bankAccount: string };
 };
 
@@ -41,6 +46,7 @@ export function EmployeeForm({
   isOwner,
   mode,
   onDone,
+  features = {},
 }: {
   action: (prev: unknown, fd: FormData) => Promise<ActionResult<{ id: string }>>;
   values?: EmployeeFormValues;
@@ -51,6 +57,8 @@ export function EmployeeForm({
   isOwner?: boolean;
   mode: "add" | "edit";
   onDone?: (id: string) => void;
+  /** Enterprise options shown when the plan includes them. */
+  features?: { hrRoles?: boolean; terminals?: boolean; rfid?: boolean; fieldMode?: boolean };
 }) {
   const [state, formAction, pending] = useActionState(action, null);
   const err = state && !state.ok ? (state.fieldErrors ?? {}) : {};
@@ -110,7 +118,9 @@ export function EmployeeForm({
           >
             {isOwner ? <option value="OWNER">Owner</option> : null}
             <option value="EMPLOYEE">Employee</option>
-            <option value="MANAGER">Manager</option>
+            <option value="MANAGER">Manager / branch supervisor</option>
+            {features.hrRoles ? <option value="TIMEKEEPER">Timekeeper</option> : null}
+            {features.hrRoles ? <option value="HR">HR</option> : null}
             <option value="ADMIN">Admin</option>
           </Select>
           {!canAssignRoles || isOwner ? (
@@ -161,6 +171,78 @@ export function EmployeeForm({
             ))}
           </div>
         </fieldset>
+      ) : null}
+
+      {departments.length > 0 && canAssignRoles ? (
+        <fieldset>
+          <legend className="mb-1 text-sm font-medium">Manages departments</legend>
+          <p className="text-muted-foreground mb-2 text-xs">
+            For supervisors, HR and timekeepers. None selected = every department at their locations.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {departments.map((d) => (
+              <label key={d} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                <Checkbox
+                  name="managedDepartmentNames"
+                  value={d}
+                  defaultChecked={values.managedDepartmentNames?.includes(d)}
+                />{" "}
+                {d}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
+
+      {features.terminals || features.rfid || features.fieldMode ? (
+        <section className="bg-muted/30 rounded-lg border p-4">
+          <p className="mb-3 text-sm font-medium">Attendance</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {features.terminals ? (
+              <Field
+                label="Terminal user ID"
+                htmlFor="deviceUserId"
+                error={err.deviceUserId}
+                hint="ID enrolled on fingerprint terminals. Blank = employee no."
+              >
+                <Input id="deviceUserId" name="deviceUserId" defaultValue={values.deviceUserId ?? ""} />
+              </Field>
+            ) : null}
+            {features.rfid ? (
+              <Field
+                label="RFID card number"
+                htmlFor="cardNumber"
+                error={err.cardNumber}
+                hint={
+                  values.cardLast4
+                    ? `Card on file ending ${values.cardLast4}. Leave blank to keep.`
+                    : "Tap the card on a USB reader with this field selected, or type its number"
+                }
+              >
+                <Input id="cardNumber" name="cardNumber" autoComplete="off" />
+              </Field>
+            ) : null}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            {features.rfid && values.cardLast4 ? (
+              <label className="flex items-center gap-2">
+                <Checkbox name="clearCard" /> Remove card
+              </label>
+            ) : null}
+            {features.fieldMode ? (
+              <>
+                <label className="flex items-center gap-2">
+                  <Checkbox name="fieldWork" defaultChecked={values.fieldWork} /> Field staff (driver, sales):
+                  GPS + selfie on every punch, no branch geofence
+                </label>
+                <label className="flex items-center gap-2">
+                  <Checkbox name="roaming" defaultChecked={values.roaming} /> Can punch at any branch&apos;s
+                  terminal
+                </label>
+              </>
+            ) : null}
+          </div>
+        </section>
       ) : null}
 
       <section className="bg-muted/30 rounded-lg border p-4">

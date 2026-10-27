@@ -7,7 +7,7 @@ import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import { requireFeature, type AppContext } from "../context";
 import { prisma } from "../db";
-import { assertEmployeeInScope, assertNotSelf } from "../scope";
+import { assertApprover, assertEmployeeInScope, assertNotSelf } from "../scope";
 import { notify, notifyManagers } from "./notifications";
 import { loadHolidays } from "./timesheets";
 
@@ -133,6 +133,7 @@ export async function decideLeave(ctx: AppContext, id: string, approve: boolean,
   requireFeature(ctx, "leave");
   const req = await ctx.db.leaveRequest.findUnique({ where: { id }, include: { leaveType: true } });
   if (!req || req.status !== "PENDING") throw new UserError("Request not found or already decided.");
+  assertApprover(ctx, "leave");
   assertNotSelf(ctx, req.employeeId, "leave");
   await assertEmployeeInScope(ctx, req.employeeId);
   await ctx.db.leaveRequest.update({

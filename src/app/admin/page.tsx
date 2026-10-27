@@ -30,7 +30,8 @@ export default async function AdminCompaniesPage({
   return (
     <>
       <PageHeader title="Companies" description={`${companies.length} shown`} />
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <Stat label="Enterprise" value={byPlan("ENTERPRISE")} />
         <Stat label="Pro" value={byPlan("PRO")} />
         <Stat label="Starter" value={byPlan("STARTER")} />
         <Stat label="Free" value={byPlan("FREE")} />

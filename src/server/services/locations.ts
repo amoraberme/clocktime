@@ -24,6 +24,14 @@ export const locationSchema = z.object({
   autoClockOut: z.boolean(),
   allowedIps: z.array(ipRule).max(20),
   requirePhoto: z.boolean(),
+  code: z
+    .string()
+    .trim()
+    .max(20)
+    .regex(/^[A-Za-z0-9_-]*$/, "Letters, numbers, - and _ only")
+    .optional()
+    .transform((v) => (v ? v.toUpperCase() : null)),
+  regionId: z.string().max(40).nullish(),
 });
 
 function gate(ctx: AppContext, input: z.infer<typeof locationSchema>) {
@@ -34,7 +42,19 @@ function gate(ctx: AppContext, input: z.infer<typeof locationSchema>) {
     autoClockOut: hasFeature(plan, "geofence") ? input.autoClockOut : false,
     allowedIps: hasFeature(plan, "ipLock") ? input.allowedIps : [],
     requirePhoto: hasFeature(plan, "photoProof") ? input.requirePhoto : false,
+    regionId: hasFeature(plan, "regions") ? (input.regionId ?? null) : null,
   } as const;
+}
+
+async function assertValid(ctx: AppContext, input: ReturnType<typeof gate>, id?: string) {
+  if (input.regionId && !(await ctx.db.region.findUnique({ where: { id: input.regionId } })))
+    throw new UserError("Choose a region from the list.");
+  if (input.code) {
+    const taken = await ctx.db.location.findFirst({
+      where: { code: input.code, ...(id ? { id: { not: id } } : {}) },
+    });
+    if (taken) throw new UserError(`Branch code ${input.code} is already used by ${taken.name}.`);
+  }
 }
 
 export async function createLocation(ctx: AppContext, raw: unknown) {
@@ -46,6 +66,7 @@ export async function createLocation(ctx: AppContext, raw: unknown) {
     );
   if (input.geofenceMode !== "OFF" && (input.latitude == null || input.longitude == null))
     throw new UserError("Set the location on the map before turning on the geofence.");
+  await assertValid(ctx, input);
   const loc = await ctx.db.location.create({ data: { ...input, companyId: ctx.company.id } });
   await writeAudit(actorFrom(ctx), {
     action: "location.create",
@@ -62,6 +83,7 @@ export async function updateLocation(ctx: AppContext, id: string, raw: unknown) 
   if (!before) throw new UserError("Location not found.");
   if (input.geofenceMode !== "OFF" && (input.latitude == null || input.longitude == null))
     throw new UserError("Set the location on the map before turning on the geofence.");
+  await assertValid(ctx, input, id);
   const loc = await ctx.db.location.update({ where: { id }, data: input });
   await writeAudit(actorFrom(ctx), {
     action: "location.update",

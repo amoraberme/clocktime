@@ -13,6 +13,7 @@ export function AddEmployeeDialog(props: {
   departments: string[];
   positions: string[];
   canAssignRoles: boolean;
+  features?: { hrRoles?: boolean; terminals?: boolean; rfid?: boolean; fieldMode?: boolean };
 }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();

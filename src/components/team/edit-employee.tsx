@@ -11,6 +11,7 @@ export function EditEmployee(props: {
   positions: string[];
   canAssignRoles: boolean;
   isOwner: boolean;
+  features?: { hrRoles?: boolean; terminals?: boolean; rfid?: boolean; fieldMode?: boolean };
 }) {
   const router = useRouter();
   return (

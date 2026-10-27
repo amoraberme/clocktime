@@ -71,6 +71,7 @@ export function CompanyPlanDialog({
               <option>FREE</option>
               <option>STARTER</option>
               <option>PRO</option>
+              <option>ENTERPRISE</option>
             </Select>
           </Field>
           <Field label="Status" htmlFor="a-status">

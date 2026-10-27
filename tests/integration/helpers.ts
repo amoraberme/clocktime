@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import type { Plan } from "@/generated/prisma/enums";
+import type { Plan, Role } from "@/generated/prisma/enums";
 import { prisma } from "@/server/db";
 import { createCompany } from "@/server/services/company";
 import { tenantDb } from "@/server/tenant";
 import { parseSettings } from "@/lib/settings";
 import { hasFeature } from "@/lib/entitlements";
-import type { AppContext } from "@/server/context";
+import { canApprove, type AppContext, type Approval } from "@/server/context";
 
 export async function makeUser(name = "Test Owner") {
   const id = randomUUID();
@@ -36,13 +36,38 @@ export async function makeCompany(
     plan,
     isManager: true,
     isAdmin: true,
+    isHr: true,
+    canViewPay: true,
+    approves: () => true,
     managedLocationIds: null,
+    managedDepartmentIds: null,
     settings: parseSettings(updated.settings),
     db: tenantDb(company.id),
     memberships: [],
     can: (f: Parameters<typeof hasFeature>[1]) => hasFeature(plan, f),
   } as unknown as AppContext;
   return { ctx, company: updated, owner, location, user };
+}
+
+/** Context for another member of the company acting in a given role and scope. */
+export function asMember(
+  base: AppContext,
+  employee: AppContext["employee"],
+  role: Role,
+  scope: { locationIds?: string[]; departmentIds?: string[] } = {},
+): AppContext {
+  return {
+    ...base,
+    employee,
+    role,
+    isManager: role !== "EMPLOYEE",
+    isAdmin: role === "ADMIN" || role === "OWNER",
+    isHr: role === "HR" || role === "ADMIN" || role === "OWNER",
+    canViewPay: role !== "TIMEKEEPER",
+    approves: (kind: Approval) => canApprove(role, kind),
+    managedLocationIds: scope.locationIds ?? null,
+    managedDepartmentIds: scope.departmentIds ?? null,
+  } as AppContext;
 }
 
 export async function cleanup(companyIds: string[]) {

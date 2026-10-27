@@ -18,6 +18,7 @@ import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import { requireFeature, type AppContext } from "../context";
 import { prisma } from "../db";
+import { employeeScopeWhere } from "../scope";
 import { notify } from "./notifications";
 
 export const shiftInputSchema = z.object({
@@ -463,11 +464,8 @@ export async function weekData(ctx: AppContext, weekStart: string, locationId?: 
     ctx.db.employee.findMany({
       where: {
         status: { not: "ARCHIVED" },
-        ...(locationId
-          ? { locations: { some: { locationId } } }
-          : ctx.managedLocationIds
-            ? { locations: { some: { locationId: { in: ctx.managedLocationIds } } } }
-            : {}),
+        ...employeeScopeWhere(ctx),
+        ...(locationId ? { locations: { some: { locationId } } } : {}),
       },
       include: { position: true },
       orderBy: [{ firstName: "asc" }, { lastName: "asc" }],

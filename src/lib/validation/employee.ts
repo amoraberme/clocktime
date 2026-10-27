@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidCard } from "../identifiers";
 
 const optionalText = z
   .string()
@@ -19,7 +20,7 @@ export const employeeInputSchema = z.object({
     .pipe(z.email("Enter a valid email").optional()),
   phone: optionalText,
   employeeNo: optionalText,
-  role: z.enum(["ADMIN", "MANAGER", "EMPLOYEE"]).default("EMPLOYEE"),
+  role: z.enum(["ADMIN", "HR", "TIMEKEEPER", "MANAGER", "EMPLOYEE"]).default("EMPLOYEE"),
   payType: z.enum(["HOURLY", "DAILY", "MONTHLY"]).default("DAILY"),
   /** In pesos */
   rate: z.coerce.number().min(0, "Rate can't be negative").max(10_000_000).default(0),
@@ -45,6 +46,27 @@ export const employeeInputSchema = z.object({
   pagibig: optionalText,
   bankName: optionalText,
   bankAccount: optionalText,
+  /** User ID on biometric terminals; blank = use the employee number */
+  deviceUserId: z
+    .string()
+    .trim()
+    .max(24)
+    .regex(/^[0-9A-Za-z]*$/, "Letters and numbers only")
+    .optional()
+    .transform((v) => (v ? v : undefined)),
+  /** RFID card number; blank keeps the current card */
+  cardNumber: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .transform((v) => (v ? v : undefined))
+    .refine((v) => v === undefined || isValidCard(v), "Enter the number printed on the card"),
+  clearCard: z.coerce.boolean().default(false),
+  fieldWork: z.coerce.boolean().default(false),
+  roaming: z.coerce.boolean().default(false),
+  /** Departments a supervisor manages (by name); empty = all departments in their branches */
+  managedDepartmentNames: z.array(z.string().trim().min(1).max(120)).default([]),
 });
 
 export type EmployeeInput = z.infer<typeof employeeInputSchema>;

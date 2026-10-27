@@ -10,7 +10,7 @@ import { fullName } from "@/lib/utils";
 import { requireContext } from "@/server/context";
 
 export default async function LoansPage() {
-  const ctx = await requireContext("ADMIN");
+  const ctx = await requireContext("HR");
   const [loans, employees, recurring] = await Promise.all([
     ctx.db.loan.findMany({
       include: { employee: true },

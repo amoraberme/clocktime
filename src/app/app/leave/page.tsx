@@ -15,6 +15,7 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { dateKey, formatKey, keyToUtcDate, utcDateToKey } from "@/lib/time";
 import { fullName } from "@/lib/utils";
 import { requireContext } from "@/server/context";
+import { employeeScopeWhere } from "@/server/scope";
 import { leaveBalances } from "@/server/services/leave";
 
 export const metadata: Metadata = { title: "Time off" };
@@ -41,9 +42,7 @@ export default async function LeavePage() {
   }
   const today = dateKey(new Date(), ctx.company.timezone);
   const year = Number(today.slice(0, 4));
-  const scope = ctx.managedLocationIds
-    ? { employee: { locations: { some: { locationId: { in: ctx.managedLocationIds } } } } }
-    : {};
+  const scope = { employee: employeeScopeWhere(ctx) };
   const [pending, upcoming, employees, types] = await Promise.all([
     ctx.db.leaveRequest.findMany({
       where: { status: "PENDING", ...scope },

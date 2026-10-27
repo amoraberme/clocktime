@@ -14,6 +14,7 @@ import { formatPeso } from "@/lib/money";
 import { formatDateTime } from "@/lib/time";
 import { cn, fullName } from "@/lib/utils";
 import { requireContext } from "@/server/context";
+import { employeeScopeWhere } from "@/server/scope";
 
 export const metadata: Metadata = { title: "Team" };
 
@@ -33,9 +34,7 @@ export default async function TeamPage({
   const sp = await searchParams;
   const tab = STATUS_TABS.find((t) => t.key === sp.status) ?? STATUS_TABS[0]!;
   const q = sp.q?.trim();
-  const scope = ctx.managedLocationIds
-    ? { locations: { some: { locationId: { in: ctx.managedLocationIds } } } }
-    : {};
+  const scope = employeeScopeWhere(ctx);
   const [employees, locations, departments, positions, openEntries] = await Promise.all([
     ctx.db.employee.findMany({
       where: {
@@ -82,13 +81,21 @@ export default async function TeamPage({
         description={`${seats} ${seats === 1 ? "person" : "people"}${plan.maxSeats ? ` of ${plan.maxSeats} on the ${plan.name} plan` : ""}`}
         actions={
           <>
-            <ImportDialog />
-            <AddEmployeeDialog
-              locations={locations}
-              departments={departments.map((d) => d.name)}
-              positions={positions.map((p) => p.name)}
-              canAssignRoles={ctx.isAdmin}
-            />
+            {ctx.canViewPay ? <ImportDialog /> : null}
+            {ctx.canViewPay ? (
+              <AddEmployeeDialog
+                locations={locations}
+                departments={departments.map((d) => d.name)}
+                positions={positions.map((p) => p.name)}
+                canAssignRoles={ctx.isAdmin || ctx.isHr}
+                features={{
+                  hrRoles: ctx.can("hrRoles"),
+                  terminals: ctx.can("biometricDevices"),
+                  rfid: ctx.can("rfid"),
+                  fieldMode: ctx.can("fieldMode"),
+                }}
+              />
+            ) : null}
           </>
         }
       />
