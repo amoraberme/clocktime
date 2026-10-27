@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const approvalLevel = z.union([z.literal(1), z.literal(2)]).default(1);
+
 /** Per-company time, pay and policy settings, stored in Company.settings (JSON). */
 export const companySettingsSchema = z.object({
   /** Round each punch to this many minutes (0 = exact). */
@@ -61,6 +63,11 @@ export const companySettingsSchema = z.object({
   autoClockOutNeedsReview: z.boolean().default(true),
   /** Longest shift the scheduler accepts (24-hour duties need Enterprise). */
   maxShiftHours: z.number().int().min(4).max(48).default(16),
+  /** Approval levels per request type (Enterprise): 1 = one approver, 2 = supervisor then HR. */
+  approvalLevelsLeave: approvalLevel,
+  approvalLevelsOvertime: approvalLevel,
+  approvalLevelsSchedule: approvalLevel,
+  approvalLevelsCorrection: approvalLevel,
 });
 
 export type CompanySettings = z.infer<typeof companySettingsSchema>;

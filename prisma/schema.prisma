@@ -147,6 +147,9 @@ model Company {
   invoices         BillingInvoice[]
   apiKeys          ApiKey[]
   punches          Punch[]
+  scheduleChanges  ScheduleChangeRequest[]
+  corrections      AttendanceCorrectionRequest[]
+  approvalSteps    ApprovalStep[]
 }
 
 enum GeofenceMode {
@@ -321,8 +324,8 @@ model Employee {
   timeEntries        TimeEntry[]
   shifts             Shift[]
   recurrences        ShiftRecurrence[]
-  swapRequests       ShiftSwapRequest[]   @relation("SwapRequester")
-  swapTargets        ShiftSwapRequest[]   @relation("SwapTarget")
+  swapRequests       ShiftSwapRequest[]            @relation("SwapRequester")
+  swapTargets        ShiftSwapRequest[]            @relation("SwapTarget")
   openShiftClaims    OpenShiftClaim[]
   availabilities     Availability[]
   leaveBalances      LeaveBalance[]
@@ -335,6 +338,8 @@ model Employee {
   loans              Loan[]
   notifications      Notification[]
   punches            Punch[]
+  scheduleChanges    ScheduleChangeRequest[]
+  corrections        AttendanceCorrectionRequest[]
 
   @@unique([companyId, userId])
   @@unique([companyId, pinLookup])
@@ -561,11 +566,12 @@ model Shift {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  timeEntries  TimeEntry[]
-  swapRequests ShiftSwapRequest[] @relation("SwapShift")
-  swapOffers   ShiftSwapRequest[] @relation("SwapTargetShift")
-  claims       OpenShiftClaim[]
-  exceptions   TimeException[]
+  timeEntries    TimeEntry[]
+  swapRequests   ShiftSwapRequest[]      @relation("SwapShift")
+  swapOffers     ShiftSwapRequest[]      @relation("SwapTargetShift")
+  claims         OpenShiftClaim[]
+  exceptions     TimeException[]
+  changeRequests ScheduleChangeRequest[]
 
   @@index([companyId, startAt])
   @@index([employeeId, startAt])
@@ -696,40 +702,129 @@ model LeaveBalance {
 }
 
 model LeaveRequest {
-  id          String        @id @default(cuid())
-  companyId   String
-  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employeeId  String
-  employee    Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  leaveTypeId String
-  leaveType   LeaveType     @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
-  startDate   DateTime      @db.Date
-  endDate     DateTime      @db.Date
-  days        Float
-  reason      String?
-  status      RequestStatus @default(PENDING)
-  decidedById String?
-  decidedAt   DateTime?
-  createdAt   DateTime      @default(now())
+  id           String        @id @default(cuid())
+  companyId    String
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId   String
+  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId  String
+  leaveType    LeaveType     @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  startDate    DateTime      @db.Date
+  endDate      DateTime      @db.Date
+  days         Float
+  reason       String?
+  status       RequestStatus @default(PENDING)
+  /// 2 = endorsed by a supervisor, waiting for HR (two-level approval)
+  currentLevel Int           @default(1)
+  decidedById  String?
+  decidedAt    DateTime?
+  createdAt    DateTime      @default(now())
 
   @@index([companyId, status])
 }
 
 model OvertimeRequest {
-  id          String        @id @default(cuid())
-  companyId   String
-  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employeeId  String
-  employee    Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  date        DateTime      @db.Date
-  minutes     Int
-  reason      String?
-  status      RequestStatus @default(PENDING)
-  decidedById String?
-  decidedAt   DateTime?
-  createdAt   DateTime      @default(now())
+  id           String        @id @default(cuid())
+  companyId    String
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId   String
+  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date         DateTime      @db.Date
+  minutes      Int
+  reason       String?
+  status       RequestStatus @default(PENDING)
+  currentLevel Int           @default(1)
+  decidedById  String?
+  decidedAt    DateTime?
+  createdAt    DateTime      @default(now())
 
   @@index([companyId, date])
+}
+
+enum ScheduleChangeKind {
+  /// Move an existing shift (time and/or branch)
+  CHANGE
+  /// Add a duty on a day with no shift
+  ADD
+  /// Remove a shift (day off / rest day swap)
+  REMOVE
+}
+
+/// An employee (or a supervisor for them) asks to change the published schedule.
+model ScheduleChangeRequest {
+  id              String             @id @default(cuid())
+  companyId       String
+  company         Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  kind            ScheduleChangeKind
+  shiftId         String?
+  shift           Shift?             @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  date            DateTime           @db.Date
+  /// Requested start, minutes after local midnight, and length (CHANGE and ADD)
+  startMinute     Int?
+  durationMinutes Int?
+  locationId      String?
+  reason          String
+  status          RequestStatus      @default(PENDING)
+  currentLevel    Int                @default(1)
+  filedById       String?
+  decidedById     String?
+  decidedAt       DateTime?
+  createdAt       DateTime           @default(now())
+
+  @@index([companyId, status])
+}
+
+enum CorrectionKind {
+  MISSING_IN
+  MISSING_OUT
+  WRONG_TIME
+  MISSING_BREAK
+  /// The punch or duty shouldn't count (e.g. tapped by mistake)
+  VOID
+}
+
+/// A request to fix attendance: a forgotten punch, a wrong time, a missing break.
+model AttendanceCorrectionRequest {
+  id           String         @id @default(cuid())
+  companyId    String
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId   String
+  employee     Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  kind         CorrectionKind
+  date         DateTime       @db.Date
+  timeEntryId  String?
+  clockInAt    DateTime?
+  clockOutAt   DateTime?
+  breakStartAt DateTime?
+  breakEndAt   DateTime?
+  reason       String
+  status       RequestStatus  @default(PENDING)
+  currentLevel Int            @default(1)
+  filedById    String?
+  decidedById  String?
+  decidedAt    DateTime?
+  createdAt    DateTime       @default(now())
+
+  @@index([companyId, status])
+}
+
+/// Each approve/decline decision on a request, level by level (the approval trail).
+model ApprovalStep {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// LEAVE, OVERTIME, SCHEDULE, CORRECTION
+  requestType String
+  requestId   String
+  level       Int
+  approved    Boolean
+  decidedById String
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@index([requestType, requestId])
 }
 
 enum HolidayType {

@@ -72,9 +72,10 @@ const buildContext = cache(async () => {
   const plan = effectivePlan(company);
   const role = employee.role;
   const isManager = roleAtLeast(role, "MANAGER");
-  // Owners/admins see every location; others only those assigned (none assigned = all).
+  // Owners, admins and HR see every branch; supervisors and timekeepers only those they're
+  // assigned to (none assigned = all).
   const managedLocationIds =
-    roleAtLeast(role, "ADMIN") || locations.length === 0 ? null : locations.map((l) => l.locationId);
+    roleAtLeast(role, "HR") || locations.length === 0 ? null : locations.map((l) => l.locationId);
   // Supervisors can also be limited to departments (none assigned = all departments).
   const managedDepartmentIds =
     roleAtLeast(role, "ADMIN") || managedDepartments.length === 0

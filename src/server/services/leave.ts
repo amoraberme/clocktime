@@ -7,7 +7,7 @@ import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import { requireFeature, type AppContext } from "../context";
 import { prisma } from "../db";
-import { assertApprover, assertEmployeeInScope, assertNotSelf } from "../scope";
+import { recordDecision } from "./approvals";
 import { notify, notifyManagers } from "./notifications";
 import { loadHolidays } from "./timesheets";
 
@@ -123,7 +123,7 @@ export async function requestLeave(ctx: AppContext, raw: unknown, forEmployeeId?
       kind: "leave.request",
       title: `${fullName(emp)} requested ${type.name}`,
       body: `${formatKey(input.startDate)}${input.endDate !== input.startDate ? ` – ${formatKey(input.endDate)}` : ""} (${days} day${days === 1 ? "" : "s"})`,
-      url: "/app/leave",
+      url: "/app/approvals",
     });
   }
   return req;
@@ -133,9 +133,7 @@ export async function decideLeave(ctx: AppContext, id: string, approve: boolean,
   requireFeature(ctx, "leave");
   const req = await ctx.db.leaveRequest.findUnique({ where: { id }, include: { leaveType: true } });
   if (!req || req.status !== "PENDING") throw new UserError("Request not found or already decided.");
-  assertApprover(ctx, "leave");
-  assertNotSelf(ctx, req.employeeId, "leave");
-  await assertEmployeeInScope(ctx, req.employeeId);
+  if ((await recordDecision(ctx, "LEAVE", req, approve, note)) === "endorsed") return;
   await ctx.db.leaveRequest.update({
     where: { id },
     data: { status: approve ? "APPROVED" : "DECLINED", decidedById: ctx.employee.id, decidedAt: new Date() },

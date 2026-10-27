@@ -11,6 +11,7 @@ import { elapsedMinutes } from "@/lib/pay/hours";
 import { formatKey, formatMinutes, formatTime, localParts } from "@/lib/time";
 import { fullName } from "@/lib/utils";
 import { requireContext } from "@/server/context";
+import { inboxCount } from "@/server/queries/approvals";
 import { dashboardData } from "@/server/queries/dashboard";
 
 export const metadata: Metadata = { title: "Dashboard" };
@@ -25,7 +26,7 @@ export default async function DashboardPage({
 }) {
   const ctx = await requireContext("MANAGER");
   const { welcome } = await searchParams;
-  const d = await dashboardData(ctx);
+  const [d, approvals] = await Promise.all([dashboardData(ctx), ctx.can("approvals") ? inboxCount(ctx) : 0]);
   const tz = ctx.company.timezone;
   const now = new Date();
   const hour = localParts(now, tz).hour;
@@ -36,9 +37,7 @@ export default async function DashboardPage({
   const inboxItems = [
     { count: d.inbox.openExceptions, label: "exceptions to review", href: "/app/exceptions" },
     { count: d.inbox.staleOpen, label: "possible missed clock-outs", href: "/app/timesheets" },
-    { count: d.inbox.pendingLeave, label: "time-off requests", href: "/app/leave" },
-    { count: d.inbox.pendingSwaps, label: "shift swap requests", href: "/app/schedule?tab=requests" },
-    { count: d.inbox.pendingOt, label: "overtime requests", href: "/app/exceptions?tab=overtime" },
+    { count: approvals, label: "requests waiting for your approval", href: "/app/approvals" },
     { count: d.lateOrMissing.length, label: "scheduled but not clocked in", href: "#late" },
   ].filter((i) => i.count > 0);
 

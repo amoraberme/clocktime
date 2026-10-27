@@ -1,6 +1,7 @@
 import "server-only";
 import webpush from "web-push";
 import { effectivePlan, hasFeature } from "@/lib/entitlements";
+import type { Role } from "@/generated/prisma/enums";
 import { prisma } from "../db";
 import { layout, sendEmail, escapeHtml } from "../email";
 
@@ -66,14 +67,18 @@ export async function notify(companyId: string, employeeId: string, input: Notif
   }
 }
 
-/** Notify every manager/admin responsible for an employee's locations. */
+/**
+ * Notify the people responsible for an employee: owners, admins, HR and supervisors, limited to
+ * those whose branches include the employee. Pass `roles` to narrow it (e.g. HR for final approval).
+ */
 export async function notifyManagers(
   companyId: string,
   aboutEmployeeId: string | null,
   input: NotificationInput,
+  roles: Role[] = ["OWNER", "ADMIN", "HR", "MANAGER"],
 ) {
   const managers = await prisma.employee.findMany({
-    where: { companyId, status: "ACTIVE", role: { in: ["OWNER", "ADMIN", "MANAGER"] } },
+    where: { companyId, status: "ACTIVE", role: { in: roles } },
     include: { locations: true },
   });
   let locationIds: string[] = [];
@@ -83,7 +88,7 @@ export async function notifyManagers(
     );
   }
   for (const m of managers) {
-    const scoped = m.role === "MANAGER" && m.locations.length > 0;
+    const scoped = (m.role === "MANAGER" || m.role === "TIMEKEEPER") && m.locations.length > 0;
     if (scoped && locationIds.length && !m.locations.some((l) => locationIds.includes(l.locationId)))
       continue;
     if (m.id === aboutEmployeeId) continue;

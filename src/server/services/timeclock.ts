@@ -159,7 +159,7 @@ function assertAutoClockOut(
 }
 
 /** Punches can't change a pay period that payroll has already finalized. */
-async function assertPeriodOpen(db: Db, actor: PunchActor, at: Date) {
+export async function assertPeriodOpen(db: Db, actor: Pick<PunchActor, "companyId" | "timezone">, at: Date) {
   const day = keyToUtcDate(dateKey(at, actor.timezone));
   const closed = await db.payRun.findFirst({
     where: {
@@ -310,6 +310,7 @@ export async function punch(actor: PunchActor, input: PunchInput): Promise<Punch
         if (at.getTime() > now.getTime() + MAX_FUTURE_MS)
           throw new UserError("This punch's time is in the future. Check your phone's clock.");
         if (
+          !input.system &&
           input.source !== "BIOMETRIC" &&
           input.source !== "IMPORT" &&
           at.getTime() < now.getTime() - MAX_AGE_MS

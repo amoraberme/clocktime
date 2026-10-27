@@ -30,6 +30,9 @@ const TENANT_MODELS = new Set([
   "BillingInvoice",
   "ApiKey",
   "Punch",
+  "ScheduleChangeRequest",
+  "AttendanceCorrectionRequest",
+  "ApprovalStep",
 ]);
 
 const WHERE_OPS = new Set([

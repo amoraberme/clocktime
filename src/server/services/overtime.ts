@@ -6,6 +6,7 @@ import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import { requireFeature, type AppContext } from "../context";
 import { assertApprover, assertEmployeeInScope, assertNotSelf } from "../scope";
+import { recordDecision } from "./approvals";
 import { notify, notifyManagers } from "./notifications";
 
 const requestSchema = z.object({
@@ -40,7 +41,7 @@ export async function requestOvertime(ctx: AppContext, raw: unknown) {
     kind: "overtime.request",
     title: `${fullName(ctx.employee)} requested overtime`,
     body: `${Math.round(input.minutes / 6) / 10}h on ${formatKey(input.date)}: ${input.reason}`,
-    url: "/app/exceptions?tab=overtime",
+    url: "/app/approvals",
   });
   return req;
 }
@@ -50,9 +51,7 @@ export async function decideOvertime(ctx: AppContext, id: string, approve: boole
   requireFeature(ctx, "overtime");
   const req = await ctx.db.overtimeRequest.findUnique({ where: { id } });
   if (!req || req.status !== "PENDING") throw new UserError("Request not found or already decided.");
-  assertApprover(ctx, "overtime");
-  assertNotSelf(ctx, req.employeeId, "overtime");
-  await assertEmployeeInScope(ctx, req.employeeId);
+  if ((await recordDecision(ctx, "OVERTIME", req, approve)) === "endorsed") return;
   await ctx.db.overtimeRequest.update({
     where: { id },
     data: {

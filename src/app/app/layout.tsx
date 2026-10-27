@@ -5,10 +5,12 @@ import { PLANS } from "@/config/plans";
 import { trialDaysLeft } from "@/lib/entitlements";
 import { switchCompanyAction } from "@/server/actions/session";
 import { requireContext } from "@/server/context";
+import { inboxCount } from "@/server/queries/approvals";
 import { employeeScopeWhere } from "@/server/scope";
 
 export default async function ManagerLayout({ children }: { children: React.ReactNode }) {
   const ctx = await requireContext("MANAGER");
+  const pendingApprovals = ctx.can("approvals") ? await inboxCount(ctx) : 0;
   const openExceptions = ctx.can("exceptions")
     ? await ctx.db.timeException.count({ where: { status: "OPEN", employee: employeeScopeWhere(ctx) } })
     : 0;
@@ -19,7 +21,12 @@ export default async function ManagerLayout({ children }: { children: React.Reac
     // HR's settings are the holiday calendar and audit log.
     href: i.href === "/app/settings" && !ctx.isAdmin ? "/app/settings/holidays" : i.href,
     locked: i.feature ? !ctx.can(i.feature) : false,
-    badge: i.href === "/app/exceptions" ? openExceptions : undefined,
+    badge:
+      i.href === "/app/exceptions"
+        ? openExceptions
+        : i.href === "/app/approvals"
+          ? pendingApprovals
+          : undefined,
   }));
   const daysLeft = trialDaysLeft(ctx.company);
   const downgraded = ctx.company.plan !== ctx.plan;
