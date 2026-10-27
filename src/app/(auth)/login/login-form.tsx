@@ -9,11 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/misc";
 import { authClient } from "@/lib/auth-client";
+import { safeNext } from "@/lib/safe-redirect";
 
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") ?? "/home";
+  const next = safeNext(params.get("next"), "/home");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [magicSent, setMagicSent] = useState(false);

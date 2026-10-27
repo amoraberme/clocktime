@@ -1,3 +1,4 @@
+import { DangerZone } from "@/components/settings/danger-zone";
 import { GeneralForm } from "@/components/settings/general-form";
 import { SettingsForm } from "@/components/settings/settings-form";
 import { requireContext } from "@/server/context";
@@ -39,6 +40,7 @@ export default async function GeneralSettingsPage() {
           },
         ]}
       />
+      <DangerZone companyName={ctx.company.name} isOwner={ctx.role === "OWNER"} />
     </div>
   );
 }

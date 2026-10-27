@@ -39,7 +39,8 @@ test("leave: employee requests, manager approves", async ({ browser }) => {
   await login(emp, "mark@demo.clocktime.ph");
   await emp.goto("/me/leave");
   await emp.getByLabel("Type").selectOption({ label: "Unpaid leave" });
-  const day = new Date(Date.now() + (40 + Math.floor(Math.random() * 200)) * 86_400_000)
+  // A different future day on every run (minute-based), so reruns on the same database don't overlap.
+  const day = new Date(Date.now() + (40 + (Math.floor(Date.now() / 60_000) % 20_000)) * 86_400_000)
     .toISOString()
     .slice(0, 10);
   await emp.getByLabel("From").fill(day);

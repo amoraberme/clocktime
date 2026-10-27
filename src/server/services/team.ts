@@ -161,6 +161,12 @@ export async function updateEmployee(ctx: AppContext, employeeId: string, raw: u
     assertCanAssignRole(ctx, input.role);
   }
   if (!ctx.isAdmin && before.role !== "EMPLOYEE") throw new UserError("Only admins can edit managers.");
+  if (
+    ctx.managedLocationIds &&
+    !before.locations.some((l) => ctx.managedLocationIds!.includes(l.locationId))
+  ) {
+    throw new UserError("You can only edit people at locations you manage.");
+  }
   const [departmentId, positionId, locationIds] = await Promise.all([
     resolveNamed(ctx.company.id, "department", input.departmentName),
     resolveNamed(ctx.company.id, "position", input.positionName),

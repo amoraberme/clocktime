@@ -21,7 +21,7 @@ import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import { requireFeature, type AppContext } from "../context";
 import { prisma } from "../db";
-import { layout, sendEmail } from "../email";
+import { escapeHtml, layout, sendEmail } from "../email";
 import { leaveBalances } from "./leave";
 import { notify } from "./notifications";
 import { renderPayslipPdf } from "../payslip-pdf";
@@ -420,7 +420,7 @@ export async function markPaid(ctx: AppContext, runId: string, emailPayslips: bo
         subject: `Payslip · ${ctx.company.name} · ${utcDateToKey(run.payDate)}`,
         html: layout(
           "Your payslip",
-          `<p>Hi ${item.employee.firstName}, your payslip for ${utcDateToKey(run.periodStart)} to ${utcDateToKey(run.periodEnd)} is attached.</p>`,
+          `<p>Hi ${escapeHtml(item.employee.firstName)}, your payslip for ${utcDateToKey(run.periodStart)} to ${utcDateToKey(run.periodEnd)} is attached.</p>`,
         ),
         attachments: [{ filename: `payslip-${utcDateToKey(run.payDate)}.pdf`, content: pdf }],
       });

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { UserError } from "@/server/action";
 import { getContextOrThrow } from "@/server/context";
+import { hit } from "@/server/rate-limit";
 import { savePunchPhoto } from "@/server/kiosk";
 import { checkPersonalDevice } from "@/server/device-lock";
 import { raiseUntrustedDevice } from "@/server/services/exceptions";
@@ -22,6 +24,8 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const ctx = await getContextOrThrow();
+    if (!(await hit(`punch:${ctx.employee.id}`, 20, 60)).ok)
+      throw new UserError("Too many punches. Wait a minute and try again.");
     const body = punchPayloadSchema.parse(await req.json());
     const actor = actorOf(ctx);
     const device = await checkPersonalDevice(ctx);

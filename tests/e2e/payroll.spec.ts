@@ -20,7 +20,8 @@ test("admin runs, finalizes and pays payroll; employee sees the payslip", async 
   await period.selectOption(chosen!);
   await page.getByRole("button", { name: "Calculate payroll" }).click();
   await expect(page).toHaveURL(/\/app\/payroll\/c/);
-  await expect(page.getByText("Ana Cruz")).toBeVisible();
+  // The salaried owner is always paid, whatever hours exist in this period.
+  await expect(page.locator("summary", { hasText: "Maria Santos" })).toBeVisible();
 
   page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "Finalize" }).click();

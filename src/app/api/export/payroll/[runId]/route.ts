@@ -130,11 +130,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ runId: s
   const totals = ws.addRow([
     "",
     "TOTAL",
-    ...header
-      .slice(2)
-      .map((_, i) => ({
-        formula: `SUM(${String.fromCharCode(67 + i)}${first}:${String.fromCharCode(67 + i)}${last})`,
-      })),
+    ...header.slice(2).map((_, i) => ({
+      formula: `SUM(${String.fromCharCode(67 + i)}${first}:${String.fromCharCode(67 + i)}${last})`,
+    })),
   ]);
   totals.font = { bold: true };
   ws.columns.forEach((col, i) => {

@@ -962,7 +962,12 @@ model BillingInvoice {
   providerInvoiceId String?   @unique
   description       String
   amountCentavos    Int
+  /// open | paid | expired
   status            String
+  plan              Plan?
+  interval          BillingInterval?
+  seats             Int?
+  providerPaymentId String?
   periodStart       DateTime?
   periodEnd         DateTime?
   paidAt            DateTime?

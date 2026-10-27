@@ -24,6 +24,6 @@ export default defineConfig({
     url: `${baseURL}/login`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: { APP_URL: baseURL, AUTH_RATE_LIMIT: "off" },
+    env: { APP_URL: baseURL, AUTH_RATE_LIMIT: "off", BILLING_TEST_MODE: "1" },
   },
 });

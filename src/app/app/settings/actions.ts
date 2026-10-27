@@ -8,6 +8,7 @@ import { run, UserError } from "@/server/action";
 import { actorFrom, writeAudit } from "@/server/audit";
 import { getContextOrThrow } from "@/server/context";
 import { prisma } from "@/server/db";
+import { storage } from "@/server/storage";
 
 const generalSchema = z.object({
   name: z.string().trim().min(2).max(100),
@@ -100,4 +101,24 @@ export async function deleteHolidayAction(id: string) {
     });
     revalidatePath("/app/settings/holidays");
   }, "Holiday removed.");
+}
+
+export async function deleteCompanyAction(confirmName: string) {
+  return run(async () => {
+    const ctx = await getContextOrThrow("ADMIN");
+    if (ctx.role !== "OWNER") throw new UserError("Only the owner can delete the company.");
+    if (confirmName.trim() !== ctx.company.name)
+      throw new UserError("Type the company name exactly to confirm.");
+    const files = await prisma.payRunItem.findMany({
+      where: { companyId: ctx.company.id, payslipKey: { not: null } },
+      select: { payslipKey: true },
+    });
+    for (const f of files)
+      await storage()
+        .delete(f.payslipKey!)
+        .catch(() => {});
+    await prisma.company.delete({ where: { id: ctx.company.id } });
+    await prisma.user.update({ where: { id: ctx.user.id }, data: { activeCompanyId: null } });
+    console.info(`company ${ctx.company.id} deleted by ${ctx.user.email}`);
+  });
 }
