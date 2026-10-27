@@ -142,6 +142,15 @@ export function GET(req: Request) {
           responses: { 200: { description: "OK" }, 409: { description: "Not finalized" } },
         },
       },
+      "/attendance-logs": {
+        post: {
+          summary:
+            "Batch upload terminal/bridge attendance logs (scope: punch). Body: { serialNumber?, records: [{ userId, at, action?, method? }] }, up to 1000; idempotent",
+          responses: {
+            200: { description: "Ingested, with counts of new, duplicate and unmatched records" },
+          },
+        },
+      },
       "/punches": {
         post: {
           summary: "Record a punch (scope: punch)",

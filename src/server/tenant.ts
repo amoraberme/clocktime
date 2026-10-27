@@ -33,6 +33,8 @@ const TENANT_MODELS = new Set([
   "ScheduleChangeRequest",
   "AttendanceCorrectionRequest",
   "ApprovalStep",
+  "AttendanceDevice",
+  "DeviceLog",
 ]);
 
 const WHERE_OPS = new Set([

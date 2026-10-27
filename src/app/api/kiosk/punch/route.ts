@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { identify, identifySchema, kioskActor, requireKiosk, savePunchPhoto } from "@/server/kiosk";
+import { identify, identifySchema, kioskActor, methodOf, requireKiosk, savePunchPhoto } from "@/server/kiosk";
 import { kioskError } from "@/server/kiosk-http";
 import { clientIp } from "@/server/request";
 import { afterPunch } from "@/server/services/punch-hooks";
@@ -24,6 +24,7 @@ export async function POST(req: Request) {
       action: p.action,
       clientId: p.clientId,
       source: "KIOSK",
+      method: methodOf(body),
       deviceId: k.device.id,
       kioskLocationId: k.location.id,
       ip: clientIp(req.headers),

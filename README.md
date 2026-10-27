@@ -33,6 +33,12 @@ pnpm report:sample     # writes docs/samples/clocktime-cutoff-report-sample.xlsx
 
 Sign in as `hr@logistics.demo.clocktime.ph`, `timekeeper@…`, `supervisor.cebu@…` or `owner@…` (password `demo12345`).
 
+### Fingerprint and RFID terminals (Enterprise)
+
+ZKTeco-style terminals with ADMS (cloud push) send punches to `/iclock/cdata`. Add each terminal under **Settings → Terminals** by serial number, then on the terminal set _Cloud Server_ to your domain, port 443, HTTPS. Staff names and RFID cards sync to the terminals; fingerprint templates stay on the device. Terminals that can't connect can upload a USB `attlog.dat` or CSV export on the same page, and other systems can post logs to `POST /api/v1/attendance-logs`. Test without hardware: `pnpm adms:sim --sn <serial>`.
+
+Some older firmware only speaks plain HTTP, and Vercel serves HTTPS only; test one real unit before rollout, and use a small HTTP→HTTPS relay if needed.
+
 ## Scripts
 
 | Command                                    | What it does                                      |

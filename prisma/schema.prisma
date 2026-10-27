@@ -150,6 +150,8 @@ model Company {
   scheduleChanges  ScheduleChangeRequest[]
   corrections      AttendanceCorrectionRequest[]
   approvalSteps    ApprovalStep[]
+  terminals        AttendanceDevice[]
+  deviceLogs       DeviceLog[]
 }
 
 enum GeofenceMode {
@@ -196,6 +198,7 @@ model Location {
   shifts      Shift[]
   devices     Device[]
   recurrences ShiftRecurrence[]
+  terminals   AttendanceDevice[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -398,6 +401,87 @@ model Device {
   createdAt        DateTime   @default(now())
 
   @@index([companyId])
+}
+
+// ───────────────────────────── Attendance terminals ─────────────────────────────
+
+enum TerminalStatus {
+  ACTIVE
+  DISABLED
+}
+
+/// A fingerprint/face/RFID terminal at a branch that pushes its logs to ClockTime (ZKTeco ADMS).
+model AttendanceDevice {
+  id                String          @id @default(cuid())
+  companyId         String
+  company           Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  locationId        String?
+  location          Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  name              String
+  serialNumber      String          @unique
+  vendor            String          @default("ZKTECO_ADMS")
+  status            TerminalStatus  @default(ACTIVE)
+  /// Trust the terminal's in/out keys; off = read taps against the schedule
+  useStatusKeys     Boolean         @default(false)
+  /// Optional: only accept pushes from these IPs/ranges
+  allowedIps        String[]        @default([])
+  lastSeenAt        DateTime?
+  lastIp            String?
+  firmware          String?
+  pushVersion       String?
+  attlogStamp       String?
+  operlogStamp      String?
+  offlineNotifiedAt DateTime?
+  createdAt         DateTime        @default(now())
+  commands          DeviceCommand[]
+  logs              DeviceLog[]
+
+  @@index([companyId])
+}
+
+/// Commands queued for a terminal (roster sync, reboot), handed out on its next poll.
+model DeviceCommand {
+  id         Int              @id @default(autoincrement())
+  deviceId   String
+  device     AttendanceDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  command    String
+  /// PENDING, SENT, DONE, FAILED
+  status     String           @default("PENDING")
+  returnCode Int?
+  sentAt     DateTime?
+  doneAt     DateTime?
+  createdAt  DateTime         @default(now())
+
+  @@index([deviceId, status])
+}
+
+/// Terminal records that couldn't become punches yet (unknown user ID) and operation logs.
+model DeviceLog {
+  id        String            @id @default(cuid())
+  companyId String
+  company   Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deviceId  String?
+  device    AttendanceDevice? @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  /// ATTLOG or OPERLOG
+  kind      String
+  userId    String?
+  at        DateTime?
+  raw       String
+  /// UNMATCHED, INGESTED, INFO
+  status    String
+  createdAt DateTime          @default(now())
+
+  @@unique([deviceId, kind, userId, at])
+  @@index([companyId, status])
+}
+
+/// Terminals that contacted ClockTime but haven't been added to a company yet.
+model UnclaimedTerminal {
+  serialNumber String   @id
+  firstSeenAt  DateTime @default(now())
+  lastSeenAt   DateTime @default(now())
+  lastIp       String?
+  pushVersion  String?
 }
 
 // ───────────────────────────── Time clock ─────────────────────────────

@@ -5,7 +5,8 @@ import { z } from "zod";
 import { effectivePlan, hasFeature } from "@/lib/entitlements";
 import { parseSettings } from "@/lib/settings";
 import { UserError } from "./action";
-import { pinLookup, randomCode, randomToken, sha256, verifySecret } from "./crypto";
+import { normalizeCard } from "@/lib/identifiers";
+import { cardLookup, pinLookup, randomCode, randomToken, sha256, verifySecret } from "./crypto";
 import { prisma } from "./db";
 import { clear, hit } from "./rate-limit";
 import { storage } from "./storage";
@@ -96,7 +97,13 @@ export class KioskAuthError extends Error {
 export const identifySchema = z.union([
   z.object({ pin: z.string().regex(/^\d{4,6}$/, "Enter your 4–6 digit PIN") }),
   z.object({ qr: z.string().min(8).max(200) }),
+  z.object({ card: z.string().min(4).max(40) }),
 ]);
+
+/** How the person identified themselves, recorded on the punch. */
+export function methodOf(input: { pin?: unknown; qr?: unknown; card?: unknown }) {
+  return input.card ? "CARD" : input.qr ? "QR" : "PIN";
+}
 
 /** Find the employee for a PIN or QR badge, with brute-force protection per kiosk. */
 export async function identify(k: Kiosk, raw: unknown) {
@@ -114,13 +121,23 @@ export async function identify(k: Kiosk, raw: unknown) {
       },
     });
     if (employee && !(await verifySecret(input.pin, employee.pinHash))) employee = null;
+  } else if ("card" in input) {
+    if (!hasFeature(k.plan, "rfid")) throw new UserError("RFID cards need the Enterprise plan.");
+    employee = await prisma.employee.findFirst({
+      where: {
+        companyId: k.company.id,
+        cardLookup: cardLookup(k.company.id, normalizeCard(input.card)),
+        status: { not: "ARCHIVED" },
+      },
+    });
   } else {
     const token = input.qr.startsWith("clocktime:") ? input.qr.slice("clocktime:".length) : input.qr;
     employee = await prisma.employee.findFirst({
       where: { companyId: k.company.id, qrToken: token, status: { not: "ARCHIVED" } },
     });
   }
-  if (!employee) throw new UserError("PIN or badge not recognized.");
+  if (!employee)
+    throw new UserError("card" in input ? "Card not recognized." : "PIN or badge not recognized.");
   await clear(key);
   return employee;
 }

@@ -21,6 +21,7 @@ import { prisma } from "../db";
 import { assertEmployeeInScope } from "../scope";
 import { escapeHtml, layout, sendEmail } from "../email";
 import { activeSeatCount, splitName } from "./company";
+import { queueRosterSync } from "./terminals";
 
 const PALETTE = [
   "#0ea5e9",
@@ -134,6 +135,14 @@ async function managedDepartmentIds(ctx: AppContext, input: EmployeeInput) {
   return rows.map((r) => r.id);
 }
 
+/** Push the person's name, ID and card to their branches' terminals (never fails the edit). */
+async function syncTerminals(ctx: AppContext, employeeId: string) {
+  if (!ctx.can("biometricDevices")) return;
+  await queueRosterSync(ctx.company.id, [employeeId]).catch((err) =>
+    console.error("roster sync failed", err),
+  );
+}
+
 async function validLocationIds(ctx: AppContext, ids: string[]) {
   if (ids.length === 0) {
     const first = await ctx.db.location.findFirst({
@@ -202,6 +211,7 @@ export async function addEmployee(ctx: AppContext, raw: unknown, opts: { sendInv
     },
   });
   if (input.email && opts.sendInvite !== false) await sendInvitation(ctx, employee.id);
+  await syncTerminals(ctx, employee.id);
   return employee;
 }
 
@@ -268,6 +278,7 @@ export async function updateEmployee(ctx: AppContext, employeeId: string, raw: u
       name: fullName(after),
     },
   });
+  await syncTerminals(ctx, employeeId);
   return after;
 }
 
@@ -285,6 +296,7 @@ export async function archiveEmployee(ctx: AppContext, employeeId: string) {
     entityType: "Employee",
     entityId: employeeId,
   });
+  await syncTerminals(ctx, employeeId);
 }
 
 export async function restoreEmployee(ctx: AppContext, employeeId: string) {
@@ -300,6 +312,7 @@ export async function restoreEmployee(ctx: AppContext, employeeId: string) {
     entityType: "Employee",
     entityId: employeeId,
   });
+  await syncTerminals(ctx, employeeId);
 }
 
 const INVITE_DAYS = 14;

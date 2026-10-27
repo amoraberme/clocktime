@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { UserError } from "@/server/action";
-import { identify, kioskActor, requireKiosk, savePunchPhoto } from "@/server/kiosk";
+import { identify, kioskActor, methodOf, requireKiosk, savePunchPhoto } from "@/server/kiosk";
 import { kioskError } from "@/server/kiosk-http";
 import { clientIp } from "@/server/request";
 import { afterPunch } from "@/server/services/punch-hooks";
@@ -13,6 +13,7 @@ const item = z.object({
   at: z.iso.datetime({ offset: true }).optional(),
   pin: z.string().optional(),
   qr: z.string().optional(),
+  card: z.string().optional(),
   photo: z.string().max(900_000).nullish(),
 });
 
@@ -24,13 +25,17 @@ export async function POST(req: Request) {
     const results: { clientId: string; ok: boolean; error?: string }[] = [];
     for (const p of [...punches].sort((a, b) => (a.at ?? "").localeCompare(b.at ?? ""))) {
       try {
-        const emp = await identify(k, p.pin ? { pin: p.pin } : { qr: p.qr ?? "" });
+        const emp = await identify(
+          k,
+          p.pin ? { pin: p.pin } : p.card ? { card: p.card } : { qr: p.qr ?? "" },
+        );
         const r = await punch(kioskActor(k, emp), {
           action: p.action,
           clientId: p.clientId,
           at: p.at ? new Date(p.at) : undefined,
           offline: true,
           source: "KIOSK",
+          method: methodOf(p),
           deviceId: k.device.id,
           kioskLocationId: k.location.id,
           ip: clientIp(req.headers),

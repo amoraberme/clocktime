@@ -19,6 +19,7 @@ export default async function KioskPage() {
       timezone={k.company.timezone}
       enabled={k.enabled}
       requirePhoto={k.location.requirePhoto && hasFeature(k.plan, "photoProof")}
+      rfid={hasFeature(k.plan, "rfid")}
     />
   );
 }

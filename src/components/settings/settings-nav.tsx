@@ -13,7 +13,7 @@ const ITEMS = [
   { href: "/app/settings/regions", label: "Regions" },
   { href: "/app/settings/holidays", label: "Holidays", hr: true },
   { href: "/app/settings/kiosks", label: "Kiosks" },
-  { href: "/app/settings/devices", label: "Terminals" },
+  { href: "/app/settings/devices", label: "Terminals", hr: true },
   { href: "/app/settings/billing", label: "Plan & billing" },
   { href: "/app/settings/api", label: "API" },
   { href: "/app/settings/webhooks", label: "Webhooks" },

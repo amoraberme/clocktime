@@ -442,7 +442,8 @@ async function applyCorrection(ctx: AppContext, req: CorrectionRow) {
       companyId: ctx.company.id,
       employeeId: req.employeeId,
       status: "OPEN",
-      date: req.date,
+      // The fixed entry's own flag (it may be dated the day before an overnight clock-out), or that day's.
+      OR: [{ date: req.date }, ...(req.timeEntryId ? [{ timeEntryId: req.timeEntryId }] : [])],
       type: { in: ["MISSED_CLOCK_OUT", "MISSING_CLOCK_IN"] },
     },
     data: {

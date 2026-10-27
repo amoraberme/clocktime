@@ -1,14 +1,15 @@
 "use client";
 
-import { CheckCircle2, CloudOff, Coffee, Delete, LogIn, LogOut, QrCode, X } from "lucide-react";
+import { CheckCircle2, CloudOff, Coffee, Delete, LogIn, LogOut, Nfc, QrCode, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { LogoMark } from "@/components/logo";
+import { createWedgeDetector } from "@/lib/card-reader";
 import { enqueue, flush, pending } from "@/lib/offline-queue";
 import { cn } from "@/lib/utils";
 import { Camera, type CameraHandle } from "./camera";
 
 type Action = "CLOCK_IN" | "CLOCK_OUT" | "BREAK_START" | "BREAK_END";
-type Cred = { pin: string } | { qr: string };
+type Cred = { pin: string } | { qr: string } | { card: string };
 type Person = {
   firstName: string;
   lastName: string;
@@ -17,6 +18,8 @@ type Person = {
 };
 
 const RESET_MS = 20_000;
+
+type NfcReader = { scan: () => Promise<void>; onreading: ((e: { serialNumber: string }) => void) | null };
 
 function subscribeOnline(cb: () => void) {
   window.addEventListener("online", cb);
@@ -34,6 +37,7 @@ export function KioskScreen({
   timezone,
   enabled,
   requirePhoto,
+  rfid = false,
 }: {
   deviceId: string;
   companyName: string;
@@ -41,6 +45,8 @@ export function KioskScreen({
   timezone: string;
   enabled: boolean;
   requirePhoto: boolean;
+  /** Accept RFID cards from a keyboard-wedge reader or Android Web NFC */
+  rfid?: boolean;
 }) {
   const scope = `kiosk:${deviceId}`;
   const [now, setNow] = useState(() => Date.now());
@@ -106,6 +112,40 @@ export function KioskScreen({
     };
   }, [reset, sync]);
 
+  // RFID: a USB/Bluetooth reader types the card number and Enter; Android Chrome can read NFC cards.
+  const identifyRef = useRef<(c: Cred) => void>(() => {});
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+  const [nfc, setNfc] = useState<"off" | "available" | "on">("off");
+  useEffect(() => {
+    if (!rfid) return;
+    const detect = createWedgeDetector({ onCard: (card) => identifyRef.current({ card }) });
+    const onKey = (e: KeyboardEvent) => {
+      if (modeRef.current !== "pin" && modeRef.current !== "scan") return;
+      if (detect(e.key, e.timeStamp)) e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    if ("NDEFReader" in window) void Promise.resolve().then(() => setNfc("available"));
+    return () => window.removeEventListener("keydown", onKey);
+  }, [rfid]);
+
+  async function startNfc() {
+    try {
+      const Reader = (window as unknown as { NDEFReader: new () => NfcReader }).NDEFReader;
+      const reader = new Reader();
+      await reader.scan();
+      reader.onreading = (e) => {
+        if (modeRef.current === "pin" || modeRef.current === "scan")
+          identifyRef.current({ card: e.serialNumber });
+      };
+      setNfc("on");
+    } catch {
+      setMessage({ text: "Allow NFC for this site to tap cards on this tablet.", tone: "error" });
+    }
+  }
+
   // Marks activity; the 1-second tick stamps the time (keeps render pure).
   function touch() {
     lastActivity.current = -1;
@@ -141,6 +181,10 @@ export function KioskScreen({
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    identifyRef.current = (c) => void identify(c);
+  });
 
   async function doPunch(action: Action) {
     if (!cred) return;
@@ -234,7 +278,11 @@ export function KioskScreen({
             </p>
           ) : (
             <p className="mt-4 text-lg text-white/70">
-              {mode === "pin" ? "Enter your PIN or scan your badge" : ""}
+              {mode === "pin"
+                ? rfid
+                  ? "Tap your card, enter your PIN or scan your badge"
+                  : "Enter your PIN or scan your badge"
+                : ""}
             </p>
           )}
         </div>
@@ -275,6 +323,14 @@ export function KioskScreen({
               >
                 <QrCode className="size-5" /> Scan my badge
               </button>
+              {rfid && nfc === "available" ? (
+                <button
+                  onClick={startNfc}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/20 py-3 text-white/80 hover:bg-white/5"
+                >
+                  <Nfc className="size-5" /> Turn on NFC card tapping
+                </button>
+              ) : null}
             </div>
           ) : null}
 
