@@ -21,7 +21,7 @@ export default async function KiosksPage() {
       />
     );
   }
-  const [devices, locations, withoutPin] = await Promise.all([
+  const [devices, locations, withoutPin, rejected] = await Promise.all([
     ctx.db.device.findMany({
       where: { kind: "KIOSK", revokedAt: null },
       include: { location: true },
@@ -29,6 +29,11 @@ export default async function KiosksPage() {
     }),
     ctx.db.location.findMany({ where: { archivedAt: null }, select: { id: true, name: true } }),
     ctx.db.employee.count({ where: { status: "ACTIVE", pinHash: null } }),
+    ctx.db.deviceLog.findMany({
+      where: { kind: "KIOSK_REJECT", createdAt: { gte: daysAgo(14) } },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
   ]);
   const appUrl = process.env.APP_URL ?? "http://localhost:3000";
   return (
@@ -82,6 +87,29 @@ export default async function KiosksPage() {
           )}
         </CardContent>
       </Card>
+      {rejected.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Offline punches that didn&apos;t sync</CardTitle>
+            <CardDescription>
+              Punched on a kiosk while offline, then rejected (e.g. a wrong PIN). Add them as a correction if
+              they were real.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-1 text-sm">
+              {rejected.map((r) => (
+                <li key={r.id}>
+                  <span className="text-muted-foreground">
+                    {formatDateTime(r.createdAt, ctx.company.timezone)} ·{" "}
+                  </span>
+                  {r.raw}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle>Badges & PINs</CardTitle>
@@ -101,4 +129,8 @@ export default async function KiosksPage() {
       </Card>
     </div>
   );
+}
+
+function daysAgo(days: number) {
+  return new Date(Date.now() - days * 86_400_000);
 }

@@ -4,20 +4,22 @@ import type { Employee, Location, Prisma } from "@/generated/prisma/client";
 import type { Plan, PunchAction, PunchSource } from "@/generated/prisma/enums";
 import { hasFeature } from "@/lib/entitlements";
 import { evaluateGeofence, formatDistance, haversineMeters, ipAllowed } from "@/lib/geo";
+import { integrityFlags } from "@/lib/attendance/integrity";
 import { elapsedMinutes } from "@/lib/pay/hours";
 import type { CompanySettings } from "@/lib/settings";
 import { atMinute, dateKey, keyToUtcDate } from "@/lib/time";
 import { UserError } from "../action";
 import { prisma } from "../db";
 import { rebuildAttendance } from "./attendance/rebuild";
-import { raiseRebuildIssues } from "./exceptions";
+import { raiseIntegrityFlags, raiseRebuildIssues } from "./exceptions";
 
 export type PunchActor = {
   companyId: string;
   timezone: string;
   plan: Plan;
   settings: CompanySettings;
-  employee: Pick<Employee, "id" | "firstName" | "lastName" | "status">;
+  employee: Pick<Employee, "id" | "firstName" | "lastName" | "status"> &
+    Partial<Pick<Employee, "fieldWork" | "roaming">>;
 };
 
 export type PunchInput = {
@@ -43,6 +45,11 @@ export type PunchInput = {
   method?: string | null;
   /** Punches the system makes itself (shift-end auto clock-out, approved corrections). */
   system?: boolean;
+  /** Integrity data from phones: browser key, punch counter, GPS fix time, clock offset */
+  clientKey?: string | null;
+  seq?: number | null;
+  fixAt?: Date | null;
+  clockOffsetMs?: number | null;
 };
 
 export type PunchResult = {
@@ -91,9 +98,32 @@ function pickLocation(locations: Location[], input: PunchInput) {
 }
 
 /** Validate the punch against location policies. Returns a warning for soft (WARN) failures. */
+/** Field staff (drivers, sales) on Enterprise: GPS with good accuracy and a selfie, no branch geofence. */
+export function fieldRules(actor: Pick<PunchActor, "plan" | "settings" | "employee">) {
+  const on = !!actor.employee.fieldWork && hasFeature(actor.plan, "fieldMode");
+  return {
+    on,
+    maxAccuracy: actor.settings.fieldMaxAccuracyMeters,
+    selfie: on && actor.settings.fieldRequireSelfie && hasFeature(actor.plan, "photoProof"),
+  };
+}
+
 function checkPolicies(actor: PunchActor, input: PunchInput, location: Location | null) {
   const isPhone = input.source === "MOBILE" || input.source === "WEB";
   const hasGps = input.lat != null && input.lng != null;
+  const field = fieldRules(actor);
+  if (isPhone && field.on && input.source !== "AUTO") {
+    if (!hasGps)
+      throw new UserError("Turn on location services. Field staff need a GPS stamp on every punch.");
+    if (input.accuracy != null && input.accuracy > field.maxAccuracy)
+      throw new UserError(
+        `Your GPS is only accurate to ${Math.round(input.accuracy)} m (needs ${field.maxAccuracy} m). Step outside or wait a moment, then try again.`,
+      );
+    if (field.selfie && !input.photoKey && (input.action === "CLOCK_IN" || input.action === "CLOCK_OUT"))
+      throw new UserError("Take a selfie to punch. Field staff need photo proof.");
+    // Field staff work away from branches: no geofence and no branch network lock.
+    return { outside: false };
+  }
   if (isPhone && actor.settings.requireGps && !hasGps) {
     throw new UserError("Turn on location services to punch. Your company requires a GPS stamp.");
   }
@@ -202,6 +232,78 @@ async function logPunch(
       accepted: result.accepted,
       error: result.error ?? null,
     },
+  });
+}
+
+const TWELVE_HOURS = 12 * 3600_000;
+
+/** Gather what the integrity rules need: previous GPS punch, shared phone, clock order. */
+async function checkIntegrity(
+  db: Db,
+  actor: PunchActor,
+  p: {
+    id: string;
+    at: Date;
+    lat: number | null;
+    lng: number | null;
+    offline: boolean;
+    fixAt: Date | null;
+    clockOffsetMs: number | null;
+    seq: number | null;
+    clientKey: string | null;
+  },
+) {
+  const near = { gte: new Date(p.at.getTime() - TWELVE_HOURS), lte: new Date(p.at.getTime() + TWELVE_HOURS) };
+  const [previous, shared, conflict] = await Promise.all([
+    p.lat != null
+      ? db.punch.findFirst({
+          where: {
+            companyId: actor.companyId,
+            employeeId: actor.employee.id,
+            accepted: true,
+            voidedAt: null,
+            id: { not: p.id },
+            lat: { not: null },
+            at: { lt: p.at, gte: near.gte },
+          },
+          orderBy: { at: "desc" },
+          select: { at: true, lat: true, lng: true },
+        })
+      : null,
+    p.clientKey
+      ? db.punch.count({
+          where: {
+            companyId: actor.companyId,
+            clientKey: p.clientKey,
+            employeeId: { not: actor.employee.id },
+            at: near,
+          },
+        })
+      : 0,
+    p.clientKey && p.seq != null && p.offline
+      ? db.punch.count({
+          where: {
+            companyId: actor.companyId,
+            clientKey: p.clientKey,
+            id: { not: p.id },
+            OR: [
+              { seq: { lt: p.seq }, at: { gt: new Date(p.at.getTime() + 60_000) } },
+              { seq: { gt: p.seq }, at: { lt: new Date(p.at.getTime() - 60_000) } },
+            ],
+          },
+        })
+      : 0,
+  ]);
+  return integrityFlags({
+    at: p.at,
+    offline: p.offline,
+    lat: p.lat,
+    lng: p.lng,
+    fixAt: p.fixAt,
+    clockOffsetMs: p.clockOffsetMs,
+    previous: previous ? { at: previous.at, lat: previous.lat!, lng: previous.lng! } : null,
+    sharedDevice: shared > 0,
+    sequenceConflict: conflict > 0,
   });
 }
 
@@ -353,8 +455,14 @@ export async function punch(actor: PunchActor, input: PunchInput): Promise<Punch
             outsideGeofence: policy.outside,
             duplicateOfId: duplicate?.id ?? null,
             accepted: true,
+            clientKey: input.clientKey ?? null,
+            seq: input.seq ?? null,
+            fixAt: input.fixAt ?? null,
+            clockOffsetMs: input.clockOffsetMs ?? null,
           },
         });
+        const integrity = input.system ? [] : await checkIntegrity(tx, actor, row);
+        if (integrity.length) await tx.punch.update({ where: { id: row.id }, data: { flags: integrity } });
         await tx.employee.update({ where: { id: actor.employee.id }, data: { lastSeenAt: now } });
         if (duplicate) {
           return {
@@ -385,6 +493,7 @@ export async function punch(actor: PunchActor, input: PunchInput): Promise<Punch
             warning: "warning" in policy ? policy.warning : undefined,
           } as PunchResult,
           rebuilt,
+          integrity: { flags: integrity, punchId: row.id },
         };
       } catch (err) {
         if (!(err instanceof UserError)) throw err;
@@ -397,6 +506,12 @@ export async function punch(actor: PunchActor, input: PunchInput): Promise<Punch
   if ("error" in outcome) throw new UserError(outcome.error!);
   if ("rebuilt" in outcome && outcome.rebuilt)
     await raiseRebuildIssues(actor.companyId, actor.employee.id, actor.timezone, outcome.rebuilt);
+  if ("integrity" in outcome && outcome.integrity?.flags.length)
+    await raiseIntegrityFlags(actor.companyId, actor.employee.id, actor.timezone, {
+      ...outcome.integrity,
+      at: outcome.result!.at,
+      entryId: outcome.result!.entryId,
+    });
   return outcome.result!;
 }
 
@@ -411,6 +526,8 @@ export type ClockState = {
     workedMinutes: number;
   } | null;
   todayMinutes: number;
+  /** Field staff rules the app applies before sending a punch */
+  field: { on: boolean; maxAccuracy: number; selfie: boolean };
   nextShift: { startAt: string; endAt: string; locationName: string } | null;
   locations: {
     id: string;
@@ -455,6 +572,7 @@ export async function getClockState(actor: PunchActor): Promise<ClockState> {
         }
       : null,
     todayMinutes: todays.reduce((s, e) => s + elapsedMinutes(e), 0),
+    field: fieldRules(actor),
     nextShift: nextShift
       ? {
           startAt: nextShift.startAt.toISOString(),

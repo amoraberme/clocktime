@@ -605,9 +605,18 @@ model Punch {
   voidReason      String?
   /// Anti-proxy and integrity flags, e.g. CLOCK_SKEW, IMPOSSIBLE_TRAVEL, SHARED_DEVICE
   flags           String[]    @default([])
+  /// Hash identifying the browser/phone (any employee), for shared-device checks
+  clientKey       String?
+  /// Per-device punch counter: a later punch with an earlier time means the clock was changed
+  seq             Int?
+  /// When the GPS fix was taken (device clock)
+  fixAt           DateTime?
+  /// Server minus device clock at the device's last online contact, in ms
+  clockOffsetMs   Int?
 
   @@unique([companyId, clientId])
   @@index([employeeId, at])
+  @@index([companyId, clientKey])
 }
 
 model Break {

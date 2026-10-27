@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { UserError } from "@/server/action";
+import { prisma } from "@/server/db";
 import { identify, kioskActor, methodOf, requireKiosk, savePunchPhoto } from "@/server/kiosk";
 import { kioskError } from "@/server/kiosk-http";
 import { clientIp } from "@/server/request";
@@ -45,11 +46,20 @@ export async function POST(req: Request) {
         results.push({ clientId: p.clientId, ok: true });
       } catch (err) {
         if (!(err instanceof UserError) && !(err && typeof err === "object" && "issues" in err)) throw err;
-        results.push({
-          clientId: p.clientId,
-          ok: false,
-          error: err instanceof Error ? err.message : "Rejected",
-        });
+        const error = err instanceof Error ? err.message : "Rejected";
+        results.push({ clientId: p.clientId, ok: false, error });
+        // Kept for admins: the kiosk can't show who it was, and the punch never reached the log.
+        await prisma.deviceLog
+          .create({
+            data: {
+              companyId: k.company.id,
+              kind: "KIOSK_REJECT",
+              raw: `${k.device.name} (${k.location.name}): ${p.action} at ${p.at ?? "unknown time"} via ${p.card ? "card" : p.pin ? "PIN" : "badge"}: ${error}`,
+              status: "INFO",
+              at: p.at ? new Date(p.at) : null,
+            },
+          })
+          .catch(() => {});
       }
     }
     return NextResponse.json({ ok: true, results });

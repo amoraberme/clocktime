@@ -13,6 +13,10 @@ export const punchPayloadSchema = z.object({
   photo: z.string().max(900_000).nullish(),
   /** Sent by the app's geofence watcher when someone leaves the site */
   auto: z.boolean().optional(),
+  /** Integrity: this device's punch counter, the GPS fix time and its clock offset at last sync */
+  seq: z.number().int().min(0).max(1e9).nullish(),
+  fixAt: z.iso.datetime({ offset: true }).nullish(),
+  clockOffsetMs: z.number().int().min(-1e10).max(1e10).nullish(),
 });
 
 export type PunchPayload = z.infer<typeof punchPayloadSchema>;

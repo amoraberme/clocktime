@@ -14,8 +14,10 @@ export const DEVICE_COOKIE = "ct_device";
  */
 export async function checkPersonalDevice(
   ctx: AppContext,
-): Promise<{ deviceId: string | null; flag: boolean }> {
-  const mode = ctx.can("deviceLock") ? ctx.settings.deviceLockMode : "off";
+): Promise<{ deviceId: string | null; flag: boolean; clientKey: string }> {
+  // Field staff on Enterprise are always held to their own phone.
+  const field = ctx.employee.fieldWork && ctx.can("fieldMode");
+  const mode = ctx.can("deviceLock") ? (field ? "block" : ctx.settings.deviceLockMode) : "off";
   const jar = await cookies();
   let token = jar.get(DEVICE_COOKIE)?.value;
   if (!token) {
@@ -28,7 +30,9 @@ export async function checkPersonalDevice(
       maxAge: 60 * 60 * 24 * 730,
     });
   }
-  if (mode === "off") return { deviceId: null, flag: false };
+  // Same browser, any employee: lets the integrity checks spot one phone punching for several people.
+  const clientKey = sha256(`${ctx.company.id}:browser:${token}`);
+  if (mode === "off") return { deviceId: null, flag: false, clientKey };
   const hash = sha256(`${ctx.company.id}:${ctx.employee.id}:${token}`);
   const devices = await prisma.device.findMany({
     where: { companyId: ctx.company.id, employeeId: ctx.employee.id, kind: "PERSONAL", revokedAt: null },
@@ -36,7 +40,7 @@ export async function checkPersonalDevice(
   const match = devices.find((d) => d.tokenHash === hash);
   if (match) {
     await prisma.device.update({ where: { id: match.id }, data: { lastSeenAt: new Date() } });
-    return { deviceId: match.id, flag: false };
+    return { deviceId: match.id, flag: false, clientKey };
   }
   if (devices.length === 0) {
     const d = await prisma.device.create({
@@ -49,13 +53,13 @@ export async function checkPersonalDevice(
         lastSeenAt: new Date(),
       },
     });
-    return { deviceId: d.id, flag: false };
+    return { deviceId: d.id, flag: false, clientKey };
   }
   if (mode === "block")
     throw new UserError(
       "This isn't your registered phone. Ask your manager to reset your device, or use the kiosk.",
     );
-  return { deviceId: null, flag: true };
+  return { deviceId: null, flag: true, clientKey };
 }
 
 export async function resetPersonalDevices(companyId: string, employeeId: string) {

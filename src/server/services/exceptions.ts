@@ -1,5 +1,6 @@
 import "server-only";
 import type { ExceptionType, Prisma } from "@/generated/prisma/client";
+import { INTEGRITY_LABELS, PROXY_FLAGS, TIME_FLAGS } from "@/lib/attendance/integrity";
 import { effectivePlan, hasFeature } from "@/lib/entitlements";
 import { computeHours } from "@/lib/pay/hours";
 import { parseSettings } from "@/lib/settings";
@@ -135,6 +136,38 @@ export async function raiseRebuildIssues(
       date: dateKey(p.at, tz),
       dedupeKey: `LOCKED:${p.punchId}`,
       details: { punchId: p.punchId, at: p.at.toISOString() },
+    });
+}
+
+/** Integrity flags on a punch become an exception for review (buddy punching, clock tampering). */
+export async function raiseIntegrityFlags(
+  companyId: string,
+  employeeId: string,
+  tz: string,
+  p: { punchId: string; at: Date; entryId: string | null; flags: string[] },
+) {
+  const proxy = p.flags.filter((f) => (PROXY_FLAGS as string[]).includes(f));
+  const time = p.flags.filter((f) => (TIME_FLAGS as string[]).includes(f));
+  const labels = (fs: string[]) => fs.map((f) => INTEGRITY_LABELS[f as keyof typeof INTEGRITY_LABELS]);
+  if (proxy.length)
+    await raise({
+      companyId,
+      employeeId,
+      type: "PROXY_SUSPECT",
+      date: dateKey(p.at, tz),
+      dedupeKey: `PROXY:${p.punchId}`,
+      timeEntryId: p.entryId,
+      details: { punchId: p.punchId, flags: proxy, reasons: labels(proxy) },
+    });
+  if (time.length)
+    await raise({
+      companyId,
+      employeeId,
+      type: "OFFLINE_TIME_SUSPECT",
+      date: dateKey(p.at, tz),
+      dedupeKey: `CLOCK:${p.punchId}`,
+      timeEntryId: p.entryId,
+      details: { punchId: p.punchId, flags: time, reasons: labels(time) },
     });
 }
 

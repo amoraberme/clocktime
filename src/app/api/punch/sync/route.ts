@@ -23,9 +23,11 @@ export async function POST(req: Request) {
     const results: { clientId: string; ok: boolean; error?: string }[] = [];
     for (const p of ordered) {
       try {
-        const { photo, auto, ...rest } = p;
+        const { photo, auto, fixAt, ...rest } = p;
         const r = await punch(actor, {
           ...rest,
+          fixAt: fixAt ? new Date(fixAt) : null,
+          clientKey: device.clientKey,
           at: p.at ? new Date(p.at) : undefined,
           offline: true,
           source: auto ? "AUTO" : "MOBILE",

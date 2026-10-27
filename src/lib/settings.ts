@@ -63,6 +63,10 @@ export const companySettingsSchema = z.object({
   autoClockOutNeedsReview: z.boolean().default(true),
   /** Longest shift the scheduler accepts (24-hour duties need Enterprise). */
   maxShiftHours: z.number().int().min(4).max(48).default(16),
+  /** Field staff: worst GPS accuracy accepted for a punch, in meters. */
+  fieldMaxAccuracyMeters: z.number().int().min(10).max(1000).default(100),
+  /** Field staff take a selfie on clock-in/out (needs photo proof). */
+  fieldRequireSelfie: z.boolean().default(true),
   /** Approval levels per request type (Enterprise): 1 = one approver, 2 = supervisor then HR. */
   approvalLevelsLeave: approvalLevel,
   approvalLevelsOvertime: approvalLevel,

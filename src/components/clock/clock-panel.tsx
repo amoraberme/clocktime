@@ -37,18 +37,25 @@ import {
   type RejectedPunch,
 } from "@/lib/offline-queue";
 import { cn } from "@/lib/utils";
+import { noteServerTime, punchIntegrity } from "@/lib/client-clock";
 import type { PunchPayload } from "@/lib/validation/punch";
 import type { ClockState } from "@/server/services/timeclock";
 
 type Action = PunchPayload["action"];
-type Position = { lat: number; lng: number; accuracy: number };
+type Position = { lat: number; lng: number; accuracy: number; fixAt?: string };
 
 /** Current position; punches always ask for a fresh fix (maximumAge 0) so stale locations aren't stamped. */
 export function getPosition(timeoutMs = 10000, maximumAge = 0): Promise<Position | null> {
   return new Promise((resolve) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) return resolve(null);
     navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }),
+      (p) =>
+        resolve({
+          lat: p.coords.latitude,
+          lng: p.coords.longitude,
+          accuracy: p.coords.accuracy,
+          fixAt: new Date(p.timestamp).toISOString(),
+        }),
       () => resolve(null),
       { enableHighAccuracy: true, timeout: timeoutMs, maximumAge },
     );
@@ -223,9 +230,21 @@ export function ClockPanel({
     setBusy(action);
     const pos = await getPosition();
     if (pos) setPosition(pos);
+    if (server.field.on && !opts.auto) {
+      if (!pos) {
+        setBusy(null);
+        return toast.error("Turn on location services. Field staff need a GPS stamp on every punch.");
+      }
+      if (pos.accuracy > server.field.maxAccuracy) {
+        setBusy(null);
+        return toast.error(
+          `GPS is only accurate to ${Math.round(pos.accuracy)} m (needs ${server.field.maxAccuracy} m). Step outside or wait a moment, then try again.`,
+        );
+      }
+    }
     if ((action === "CLOCK_IN" || action === "CLOCK_OUT") && !opts.auto && !opts.photo) {
       const siteId = action === "CLOCK_OUT" ? server.entry?.locationId : locationId || nearestTo(pos)?.id;
-      if (server.locations.find((l) => l.id === siteId)?.requirePhoto) {
+      if (server.field.selfie || server.locations.find((l) => l.id === siteId)?.requirePhoto) {
         setBusy(null);
         setPhotoFor(action);
         return;
@@ -240,7 +259,9 @@ export function ClockPanel({
       lat: pos?.lat ?? null,
       lng: pos?.lng ?? null,
       accuracy: pos?.accuracy ?? null,
+      fixAt: pos?.fixAt ?? null,
       locationId: locationId || null,
+      ...punchIntegrity(),
     };
     try {
       const res = await fetch("/api/punch", {
@@ -248,6 +269,7 @@ export function ClockPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      noteServerTime(res);
       const body = (await res.json()) as {
         ok: boolean;
         error?: string;

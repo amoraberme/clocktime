@@ -149,6 +149,20 @@ export default async function TimeSettingsPage() {
           hint: "Clock-outs set by the system stay flagged until a manager confirms them.",
         },
         {
+          key: "fieldMaxAccuracyMeters",
+          label: "Field staff: worst GPS accuracy accepted",
+          type: "number",
+          min: 10,
+          max: 1000,
+          suffix: "meters",
+          hint: "Drivers and sales (Enterprise). Punches with a vaguer fix are refused.",
+        },
+        {
+          key: "fieldRequireSelfie",
+          label: "Field staff take a selfie on clock-in and clock-out",
+          type: "boolean",
+        },
+        {
           key: "requireGps",
           label: "Require GPS for phone punches",
           type: "boolean",

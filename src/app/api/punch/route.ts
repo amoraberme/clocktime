@@ -29,10 +29,12 @@ export async function POST(req: Request) {
     const body = punchPayloadSchema.parse(await req.json());
     const actor = actorOf(ctx);
     const device = await checkPersonalDevice(ctx);
-    const { photo, auto, at: _clientAt, ...rest } = body;
+    const { photo, auto, at: _clientAt, fixAt, ...rest } = body;
     void _clientAt; // live punches use the server clock
     const result = await punch(actor, {
       ...rest,
+      fixAt: fixAt ? new Date(fixAt) : null,
+      clientKey: device.clientKey,
       source: auto ? "AUTO" : "MOBILE",
       ip: clientIp(req.headers),
       photoKey: await savePunchPhoto(ctx.company.id, photo),

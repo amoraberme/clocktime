@@ -9,6 +9,8 @@ export type NavItem = {
   minRole?: "HR" | "ADMIN";
   /** Hidden from timekeepers, who don't see pay. */
   pay?: boolean;
+  /** Hidden (instead of shown locked) unless the plan has the feature. */
+  enterprise?: boolean;
 };
 
 export const MANAGER_NAV: NavItem[] = [
@@ -18,6 +20,7 @@ export const MANAGER_NAV: NavItem[] = [
   { href: "/app/exceptions", label: "Exceptions", icon: "TriangleAlert", feature: "exceptions" },
   { href: "/app/leave", label: "Time off", icon: "Palmtree", feature: "leave" },
   { href: "/app/team", label: "Team", icon: "Users" },
+  { href: "/app/field", label: "Field staff", icon: "Navigation", feature: "fieldMode", enterprise: true },
   { href: "/app/approvals", label: "Approvals", icon: "Inbox", feature: "approvals" },
   { href: "/app/reports", label: "Reports", icon: "FileSpreadsheet", feature: "attendanceReports" },
   { href: "/app/payroll", label: "Payroll", icon: "Wallet", feature: "payroll", minRole: "HR", pay: true },
