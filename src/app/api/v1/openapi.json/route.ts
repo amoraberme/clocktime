@@ -120,6 +120,20 @@ export function GET(req: Request) {
           responses: { 200: { description: "OK" } },
         },
       },
+      "/attendance": {
+        get: {
+          summary:
+            "Cutoff attendance: daily DTR rows (time in/out, hours, late, undertime, OT rendered/approved, leave, absences) and per-employee and per-branch totals",
+          parameters: [
+            { name: "start", in: "query", schema: { type: "string", format: "date" } },
+            { name: "department", in: "query", schema: { type: "string" } },
+            { name: "location", in: "query", schema: { type: "string" } },
+            { name: "region", in: "query", schema: { type: "string" } },
+            { name: "employee", in: "query", schema: { type: "string" } },
+          ],
+          responses: { 200: { description: "OK" } },
+        },
+      },
       "/pay-runs": { get: { summary: "List pay runs", responses: { 200: { description: "OK" } } } },
       "/pay-runs/{id}": {
         get: {

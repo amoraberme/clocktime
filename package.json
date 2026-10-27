@@ -22,6 +22,8 @@
     "db:migrate": "prisma migrate dev && prisma generate",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
+    "demo:enterprise": "tsx --import ./scripts/server-only-stub.mjs scripts/seed-enterprise-demo.ts",
+    "report:sample": "tsx --import ./scripts/server-only-stub.mjs scripts/sample-cutoff-report.ts",
     "db:reset": "prisma migrate reset --force",
     "postinstall": "prisma generate"
   },

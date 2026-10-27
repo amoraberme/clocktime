@@ -64,4 +64,23 @@ describe("extended duty", () => {
     expect(r.totals.nightMinutes).toBe(8 * 60);
     expect(r.minutesByCalendarDate).toEqual({ "2026-10-13": 120, "2026-10-14": 360 });
   });
+
+  it("keeps an overstay past a scheduled 24-hour duty as overtime", () => {
+    const shift = { startAt: at("2026-10-13", "08:00"), endAt: at("2026-10-14", "08:00") };
+    const r = computeHours(
+      [
+        {
+          id: "s",
+          clockInAt: at("2026-10-13", "08:00"),
+          clockOutAt: at("2026-10-14", "14:00"),
+          breaks: [],
+          shift,
+        },
+      ],
+      ctx,
+    );
+    expect(r.totals.regularMinutes).toBe(8 * 60);
+    expect(r.totals.overtimeMinutes).toBe(22 * 60);
+    expect(r.days).toHaveLength(1);
+  });
 });

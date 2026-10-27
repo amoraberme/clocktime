@@ -163,7 +163,9 @@ export async function rebuildAttendance(tx: Tx, input: RebuildInput): Promise<Re
     const op = pe.outPunchId ? byId.get(pe.outPunchId)! : null;
     const flags: string[] = [...pe.flags];
     if (op?.source === "AUTO" && settings.autoClockOutNeedsReview) flags.push("AUTO_OUT");
-    if (ip.offline || op?.offline) flags.push("OFFLINE");
+    // Terminals always upload after the fact; only phone/kiosk punches queued offline are notable.
+    const queued = (p: Punch | null) => !!p?.offline && ["MOBILE", "WEB", "KIOSK"].includes(p.source);
+    if (queued(ip) || queued(op)) flags.push("OFFLINE");
     const data = {
       locationId: ip.locationId ?? op?.locationId ?? null,
       shiftId: pe.shiftId,

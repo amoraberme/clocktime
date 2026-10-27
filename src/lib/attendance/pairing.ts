@@ -222,7 +222,11 @@ export function pairPunches(
       e.shiftId = candidates[0]?.id ?? null;
     }
     if (!e.shiftId) e.flags.push("UNSCHEDULED");
-    if (e.outAt && e.outAt.getTime() - e.inAt.getTime() > st.longDutyMinutes * MIN) e.flags.push("LONG_DUTY");
+    // Long = past the review threshold, or for rostered long duties (24h guards) well past the roster.
+    const shift = e.shiftId ? sortedShifts.find((s) => s.id === e.shiftId) : null;
+    const rostered = shift ? shift.endAt.getTime() - shift.startAt.getTime() + 2 * 60 * MIN : 0;
+    const limit = Math.max(st.longDutyMinutes * MIN, rostered);
+    if (e.outAt && e.outAt.getTime() - e.inAt.getTime() > limit) e.flags.push("LONG_DUTY");
   }
   entries.sort((a, b) => a.inAt.getTime() - b.inAt.getTime());
   return { entries, orphans, resolved };

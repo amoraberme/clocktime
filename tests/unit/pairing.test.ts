@@ -60,11 +60,13 @@ describe("pairPunches", () => {
     expect(r.entries[0]!.outAt).toEqual(t("2026-10-14T06:03"));
   });
 
-  it("keeps a 24-hour guard duty as one entry and flags it for review", () => {
+  it("keeps a rostered 24-hour duty whole, flagging only an overstay for review", () => {
     const s = shift("duty", "2026-10-13T08:00", "2026-10-14T08:00");
-    const r = pairPunches([p("2026-10-13T07:45"), p("2026-10-14T08:10")], [s], ST, NOW);
-    expect(r.entries).toHaveLength(1);
-    expect(r.entries[0]!.flags).toContain("LONG_DUTY");
+    const ok = pairPunches([p("2026-10-13T07:45"), p("2026-10-14T08:10")], [s], ST, NOW);
+    expect(ok.entries).toHaveLength(1);
+    expect(ok.entries[0]!.flags).not.toContain("LONG_DUTY");
+    const over = pairPunches([p("2026-10-13T07:45"), p("2026-10-14T14:00")], [s], ST, NOW);
+    expect(over.entries[0]!.flags).toContain("LONG_DUTY");
   });
 
   it("alternates unscheduled taps and splits on the max duty", () => {

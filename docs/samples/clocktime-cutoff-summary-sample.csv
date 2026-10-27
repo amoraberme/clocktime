@@ -1,0 +1,24 @@
+﻿Employee No,Name,Department,Branch,Region,Days Present,Absences,Paid Leave (days),Unpaid Leave (days),Worked (h),Regular (h),Night Diff (h),OT Rendered (h),OT Approved (h),OT For Review (h),Times Late,Late (min),Undertime (min),Missing Punches,Days For Review
+0021,"Aguilar, Tess",Sales,Cebu Depot,Visayas,9,0,0,1,77.6,70.87,0,6.73,0.97,5.77,3,92,0,0,2
+0008,"Aquino, Nestor",Warehouse,Clark Hub,Central Luzon,13,0,0,0,97.4,94.7,89.63,2.7,1.87,0.83,2,46,34,0,1
+0007,"Bautista, Rico",Warehouse,Clark Hub,Central Luzon,13,0,0,0,99.2,97.67,53.53,1.53,0.5,1.03,4,102,45,0,0
+0012,"Castro, Edwin",Security,Davao Depot,Mindanao,5,0,0,0,114.67,40,40,74.67,74.67,0,2,69,0,0,0
+0004,"Dela Cruz, Maria",Operations,Manila HQ,NCR,9,1,0,0,73.93,70.13,0,3.8,3.08,0.72,4,132,12,0,0
+0022,"Dizon, Vince",Sales,Davao Depot,Mindanao,10,0,0,0,82.57,79.37,0,3.2,2.43,0.77,2,42,16,0,0
+0010,"Flores, Dennis",Security,Cebu Depot,Visayas,4,0,0,0,91.8,32,32,59.8,59.8,0,1,36,0,1,1
+0006,"Garcia, Liza",Operations,Manila HQ,NCR,10,0,0,0,82.47,79.13,0,3.33,1.63,1.7,2,57,20,0,1
+0001,"Lim, Andrea",Admin,Manila HQ,NCR,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0018,"Lopez, Jomar",Operations,Clark Hub,Central Luzon,13,0,0,0,106.93,102.07,0,4.87,4.33,0.53,4,97,44,0,0
+0020,"Manalo, Kris",Sales,Manila HQ,NCR,9,0,1,0,75.9,71.6,0,4.3,3.3,1,2,48,0,0,0
+0005,"Mendoza, Jun",Operations,Manila HQ,NCR,8,0,2,0,68.78,63.4,0,5.38,2.45,2.93,1,38,22,0,1
+0015,"Navarro, Paolo",Operations,Cebu Depot,Visayas,13,0,0,0,113.47,103.03,0,10.43,8.23,2.2,3,48,27,0,1
+0017,"Ocampo, Mark",Operations,Manila HQ,NCR,12,0,0,0,97.47,95.2,0,2.27,1.03,1.23,2,62,0,1,1
+0009,"Pascual, Joy",Warehouse,Clark Hub,Central Luzon,13,0,0,0,95.3,92.57,88.35,2.73,1.3,1.43,3,92,60,0,1
+0013,"Ramos, Lito",Security,Davao Depot,Mindanao,5,0,0,0,114.23,40,40,74.23,74.23,0,1,32,29,0,0
+0003,"Reyes, Carlo",Admin,Manila HQ,NCR,10,0,0,0,87.15,79.73,0,7.42,3.82,3.6,1,14,0,0,2
+0019,"Rivera, Ben",Operations,Cebu Depot,Visayas,13,0,0,0,112.1,103.73,0,8.37,6.17,2.2,4,67,0,0,1
+0016,"Salazar, Ana",Operations,Davao Depot,Mindanao,13,0,0,0,102.4,101.1,0,1.3,0.67,0.63,4,93,110,0,0
+0002,"Santos, Bea",Admin,Manila HQ,NCR,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0014,"Torres, Grace",Operations,Cebu Depot,Visayas,13,0,0,0,109.67,104,0,5.67,2.53,3.13,1,24,0,0,1
+0011,"Villanueva, Ramon",Security,Cebu Depot,Visayas,5,0,0,0,120.77,40,39,80.77,75.83,4.93,1,34,0,0,1
+Total,,,,,200,1,3,1,1923.81,1560.3,382.51,363.5,328.84,34.63,47,1225,419,2,14

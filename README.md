@@ -24,6 +24,15 @@ pnpm dev                        # http://localhost:3000
 
 Demo logins (password `demo12345`): `owner@demo.clocktime.ph` (owner), `jose@demo.clocktime.ph` (manager), `ana@demo.clocktime.ph` (employee). Demo company code: `DEMO2026`. Kiosk PINs are `1001`–`1007` in team order (Maria = 1001, Ana = 1003).
 
+### Enterprise demo and sample cutoff report
+
+```bash
+pnpm demo:enterprise   # "Demo Logistics Corp": 4 regions, terminals, 24h guards, drivers, a full cutoff
+pnpm report:sample     # writes docs/samples/clocktime-cutoff-report-sample.xlsx (+ CSVs)
+```
+
+Sign in as `hr@logistics.demo.clocktime.ph`, `timekeeper@…`, `supervisor.cebu@…` or `owner@…` (password `demo12345`).
+
 ## Scripts
 
 | Command                                    | What it does                                      |

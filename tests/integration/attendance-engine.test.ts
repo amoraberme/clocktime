@@ -80,13 +80,13 @@ describe("attendance engine", () => {
     expect(all[0]!.clockOutAt).toEqual(ago(2));
   });
 
-  it("keeps a 24-hour duty whole and sends it to review", async () => {
+  it("keeps a 24-hour duty whole and sends an overstay to review", async () => {
     const t = await setup();
-    await t.shift(ago(50), ago(26));
-    await t.tap(ago(50.2));
-    await t.tap(ago(25.8));
+    await t.shift(ago(56), ago(32));
+    await t.tap(ago(56.2));
+    await t.tap(ago(26));
     const [e] = await t.entries();
-    expect(e!.clockOutAt).toEqual(ago(25.8));
+    expect(e!.clockOutAt).toEqual(ago(26));
     expect(e!.flags).toContain("LONG_DUTY");
     expect((await t.exceptions()).map((x) => x.type)).toContain("LONG_DUTY");
   });

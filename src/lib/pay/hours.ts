@@ -239,8 +239,10 @@ export function computeHours(entries: EntryInput[], ctx: HoursContext): HoursRes
         const calKey = dateKey(instant, ctx.timezone);
         const dayType = dayTypeFor(calKey, ctx);
         minutesByCalendarDate[calKey] = (minutesByCalendarDate[calKey] ?? 0) + 1;
-        // Each 24 hours of a long duty is a new workday with its own regular hours.
-        const segment = Math.floor((t - startMs) / DAY_MS);
+        // Each 24 hours of a long duty is a new workday with its own regular hours. Time past a
+        // scheduled duty's end stays on its last workday, so an overstay is overtime (needing approval).
+        const capped = entry.shift ? Math.max(startMs, Math.min(t, entry.shift.endAt.getTime() - 60000)) : t;
+        const segment = Math.floor((capped - startMs) / DAY_MS);
         const segDate =
           segment === 0 ? workDate : dateKey(new Date(startMs + segment * DAY_MS), ctx.timezone);
         const segDay = segment === 0 ? day : dayFor(segDate);
