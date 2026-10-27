@@ -13,6 +13,8 @@ import { fullName } from "@/lib/utils";
 import { requireContext } from "@/server/context";
 import { inboxCount } from "@/server/queries/approvals";
 import { dashboardData } from "@/server/queries/dashboard";
+import { nationwideToday } from "@/server/queries/nationwide";
+import { BranchRollup } from "@/components/dashboard/branch-rollup";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -22,11 +24,24 @@ const TIMELINE_HOURS = 19;
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ welcome?: string }>;
+  searchParams: Promise<{ welcome?: string; branch?: string }>;
 }) {
-  const ctx = await requireContext("MANAGER");
-  const { welcome } = await searchParams;
-  const [d, approvals] = await Promise.all([dashboardData(ctx), ctx.can("approvals") ? inboxCount(ctx) : 0]);
+  const full = await requireContext("MANAGER");
+  const { welcome, branch: branchId } = await searchParams;
+  // Drill into one branch (only branches this user can see).
+  const branch =
+    branchId && (!full.managedLocationIds || full.managedLocationIds.includes(branchId))
+      ? await full.db.location.findUnique({ where: { id: branchId }, select: { id: true, name: true } })
+      : null;
+  const ctx = branch ? { ...full, managedLocationIds: [branch.id] } : full;
+  const branchCount = await full.db.location.count({
+    where: { archivedAt: null, ...(full.managedLocationIds ? { id: { in: full.managedLocationIds } } : {}) },
+  });
+  const [d, approvals, regions] = await Promise.all([
+    dashboardData(ctx),
+    ctx.can("approvals") ? inboxCount(ctx) : 0,
+    branchCount > 1 && !branch ? nationwideToday(full) : Promise.resolve(null),
+  ]);
   const tz = ctx.company.timezone;
   const now = new Date();
   const hour = localParts(now, tz).hour;
@@ -53,6 +68,14 @@ export default async function DashboardPage({
           </Button>
         }
       />
+      {branch ? (
+        <Alert tone="info" className="mb-6">
+          Showing <b>{branch.name}</b> only.{" "}
+          <Link href="/app" className="underline">
+            Back to all branches
+          </Link>
+        </Alert>
+      ) : null}
       {welcome ? (
         <Alert tone="success" title="Your company is ready" className="mb-6">
           Next:{" "}
@@ -86,6 +109,8 @@ export default async function DashboardPage({
           />
         ) : null}
       </div>
+
+      {regions ? <BranchRollup regions={regions} showTerminals={full.can("biometricDevices")} /> : null}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">

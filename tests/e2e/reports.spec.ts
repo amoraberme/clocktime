@@ -19,3 +19,14 @@ test("cutoff report: pick a branch, preview and download the Excel workbook", as
   );
   expect(await csv.text()).toContain("OT Approved (h)");
 });
+
+test("dashboard rolls up every branch and drills into one", async ({ page }) => {
+  await login(page, "owner@demo.clocktime.ph");
+  await page.goto("/app");
+  const rollup = page.getByTestId("branch-rollup");
+  await expect(rollup).toBeVisible();
+  const first = rollup.getByRole("link").first();
+  const name = (await first.textContent())!;
+  await first.click();
+  await expect(page.getByText(`Showing ${name} only.`)).toBeVisible();
+});
