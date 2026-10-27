@@ -276,3 +276,16 @@ export function parseHHMM(value: string) {
 export function toHHMM(minute: number) {
   return `${pad(Math.floor(minute / 60) % 24)}:${pad(minute % 60)}`;
 }
+
+/** Parse an <input type="datetime-local"> value ("YYYY-MM-DDTHH:mm") as wall-clock time in tz. */
+export function parseLocalDateTime(value: string, tz: string) {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(value);
+  if (!m) throw new Error(`Invalid date/time: ${value}`);
+  return atMinute(m[1]!, Number(m[2]) * 60 + Number(m[3]), tz);
+}
+
+/** Format an instant for an <input type="datetime-local"> in tz. */
+export function toLocalDateTimeInput(instant: Date, tz: string) {
+  const p = localParts(instant, tz);
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
+}

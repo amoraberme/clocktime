@@ -41,7 +41,8 @@ export const auth = betterAuth({
     updateAge: 60 * 60 * 24,
   },
   rateLimit: {
-    enabled: process.env.NODE_ENV === "production",
+    // Tests sign in many times a minute; never disable this in a real deployment.
+    enabled: process.env.NODE_ENV === "production" && process.env.AUTH_RATE_LIMIT !== "off",
     window: 60,
     max: 30,
   },

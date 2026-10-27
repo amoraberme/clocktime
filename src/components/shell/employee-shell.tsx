@@ -56,6 +56,7 @@ export function EmployeeShell({
             <DropdownSeparator />
             <DropdownItem
               onSelect={async () => {
+                navigator.serviceWorker?.controller?.postMessage("clear-pages");
                 await authClient.signOut();
                 router.push("/login");
               }}
