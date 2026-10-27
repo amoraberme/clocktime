@@ -1,0 +1,1000 @@
+// ClockTime database schema.
+// Conventions: money in integer centavos, durations in integer minutes, timestamps in UTC.
+// Every tenant-owned row carries companyId; access goes through src/server/tenant.ts.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Auth (Better Auth) ─────────────────────────────
+
+model User {
+  id              String    @id
+  name            String
+  email           String    @unique
+  emailVerified   Boolean   @default(false)
+  image           String?
+  activeCompanyId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  sessions        Session[]
+  accounts        Account[]
+  employees       Employee[]
+  pushSubscriptions PushSubscription[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ───────────────────────────── Tenancy ─────────────────────────────
+
+enum Plan {
+  FREE
+  STARTER
+  PRO
+}
+
+enum PlanStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum PayFrequency {
+  WEEKLY
+  SEMI_MONTHLY
+  MONTHLY
+}
+
+model Company {
+  id           String       @id @default(cuid())
+  name         String
+  slug         String       @unique
+  timezone     String       @default("Asia/Manila")
+  currency     String       @default("PHP")
+  industry     String?
+  joinCode     String       @unique
+  payFrequency PayFrequency @default(SEMI_MONTHLY)
+  /// JSON matching CompanySettings in src/lib/settings.ts
+  settings     Json         @default("{}")
+  plan         Plan         @default(STARTER)
+  planStatus   PlanStatus   @default(TRIALING)
+  trialEndsAt  DateTime?
+  paidThrough  DateTime?
+  onboardedAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  locations        Location[]
+  departments      Department[]
+  positions        Position[]
+  employees        Employee[]
+  invitations      Invitation[]
+  devices          Device[]
+  timeEntries      TimeEntry[]
+  shifts           Shift[]
+  recurrences      ShiftRecurrence[]
+  swapRequests     ShiftSwapRequest[]
+  availabilities   Availability[]
+  leaveTypes       LeaveType[]
+  leaveBalances    LeaveBalance[]
+  leaveRequests    LeaveRequest[]
+  overtimeRequests OvertimeRequest[]
+  holidays         Holiday[]
+  exceptions       TimeException[]
+  timesheets       Timesheet[]
+  payRuns          PayRun[]
+  payRunItems      PayRunItem[]
+  payAdjustments   PayAdjustment[]
+  loans            Loan[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  subscription     Subscription?
+  invoices         BillingInvoice[]
+  apiKeys          ApiKey[]
+  punches          Punch[]
+}
+
+enum GeofenceMode {
+  OFF
+  WARN
+  BLOCK
+}
+
+model Location {
+  id            String       @id @default(cuid())
+  companyId     String
+  company       Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name          String
+  address       String?
+  latitude      Float?
+  longitude     Float?
+  radiusMeters  Int          @default(150)
+  geofenceMode  GeofenceMode @default(OFF)
+  autoClockOut  Boolean      @default(false)
+  allowedIps    String[]     @default([])
+  requirePhoto  Boolean      @default(false)
+  archivedAt    DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  employees   EmployeeLocation[]
+  timeEntries TimeEntry[]
+  shifts      Shift[]
+  devices     Device[]
+  recurrences ShiftRecurrence[]
+
+  @@index([companyId])
+}
+
+model Department {
+  id        String     @id @default(cuid())
+  companyId String
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  employees Employee[]
+
+  @@unique([companyId, name])
+}
+
+model Position {
+  id          String            @id @default(cuid())
+  companyId   String
+  company     Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  color       String            @default("#2563eb")
+  employees   Employee[]
+  shifts      Shift[]
+  recurrences ShiftRecurrence[]
+
+  @@unique([companyId, name])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum EmployeeStatus {
+  INVITED
+  ACTIVE
+  ARCHIVED
+}
+
+enum PayType {
+  HOURLY
+  DAILY
+  MONTHLY
+}
+
+model Employee {
+  id                  String         @id @default(cuid())
+  companyId           String
+  company             Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId              String?
+  user                User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  firstName           String
+  lastName            String
+  email               String?
+  phone               String?
+  employeeNo          String?
+  role                Role           @default(EMPLOYEE)
+  status              EmployeeStatus @default(INVITED)
+  hireDate            DateTime?      @db.Date
+  payType             PayType        @default(DAILY)
+  /// Hourly, daily or monthly rate depending on payType, in centavos
+  rateCentavos        Int            @default(0)
+  /// Factor used to convert monthly ↔ daily rates (261, 313 or 365)
+  workDaysPerYear     Int            @default(313)
+  isMinimumWageEarner Boolean        @default(false)
+  /// Weekdays (0=Sun … 6=Sat) that are this employee's rest days
+  restDays            Int[]          @default([0])
+  // Government IDs and bank account, AES-256-GCM encrypted (src/server/crypto.ts)
+  tinEnc              String?
+  sssEnc              String?
+  philhealthEnc       String?
+  pagibigEnc          String?
+  bankName            String?
+  bankAccountEnc      String?
+  /// scrypt hash of the kiosk PIN
+  pinHash             String?
+  /// HMAC of companyId+PIN, lets the kiosk find the employee without scanning hashes
+  pinLookup           String?
+  qrToken             String         @unique @default(cuid())
+  departmentId        String?
+  department          Department?    @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  positionId          String?
+  position            Position?      @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  color               String         @default("#0ea5e9")
+  lastSeenAt          DateTime?
+  archivedAt          DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  locations        EmployeeLocation[]
+  invitations      Invitation[]
+  devices          Device[]
+  timeEntries      TimeEntry[]
+  shifts           Shift[]
+  recurrences      ShiftRecurrence[]
+  swapRequests     ShiftSwapRequest[] @relation("SwapRequester")
+  swapTargets      ShiftSwapRequest[] @relation("SwapTarget")
+  openShiftClaims  OpenShiftClaim[]
+  availabilities   Availability[]
+  leaveBalances    LeaveBalance[]
+  leaveRequests    LeaveRequest[]
+  overtimeRequests OvertimeRequest[]
+  exceptions       TimeException[]
+  timesheets       Timesheet[]
+  payRunItems      PayRunItem[]
+  payAdjustments   PayAdjustment[]
+  loans            Loan[]
+  notifications    Notification[]
+  punches          Punch[]
+
+  @@unique([companyId, userId])
+  @@unique([companyId, pinLookup])
+  @@unique([companyId, employeeNo])
+  @@index([companyId, status])
+}
+
+/// Locations an employee works at. For managers, also the locations they manage (empty = all).
+model EmployeeLocation {
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, locationId])
+}
+
+model Invitation {
+  id         String    @id @default(cuid())
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  email      String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([companyId])
+}
+
+enum DeviceKind {
+  KIOSK
+  PERSONAL
+}
+
+model Device {
+  id               String     @id @default(cuid())
+  companyId        String
+  company          Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  kind             DeviceKind
+  name             String
+  locationId       String?
+  location         Location?  @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  employeeId       String?
+  employee         Employee?  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  tokenHash        String?    @unique
+  pairingCode      String?    @unique
+  pairingExpiresAt DateTime?
+  trusted          Boolean    @default(true)
+  lastSeenAt       DateTime?
+  revokedAt        DateTime?
+  createdAt        DateTime   @default(now())
+
+  @@index([companyId])
+}
+
+// ───────────────────────────── Time clock ─────────────────────────────
+
+enum PunchSource {
+  MOBILE
+  WEB
+  KIOSK
+  MANUAL
+  AUTO
+  API
+}
+
+enum TimeEntryStatus {
+  OPEN
+  CLOSED
+  APPROVED
+  LOCKED
+}
+
+model TimeEntry {
+  id                 String          @id @default(cuid())
+  companyId          String
+  company            Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId         String
+  employee           Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  locationId         String?
+  location           Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  shiftId            String?
+  shift              Shift?          @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  clockInAt          DateTime
+  clockOutAt         DateTime?
+  inLat              Float?
+  inLng              Float?
+  inAccuracy         Float?
+  outLat             Float?
+  outLng             Float?
+  outAccuracy        Float?
+  inSource           PunchSource
+  outSource          PunchSource?
+  inDeviceId         String?
+  outDeviceId        String?
+  inIp               String?
+  outIp              String?
+  inPhotoKey         String?
+  outPhotoKey        String?
+  inOutsideGeofence  Boolean         @default(false)
+  outOutsideGeofence Boolean         @default(false)
+  /// Client-generated UUID so offline punches sync idempotently
+  clientId           String?
+  status             TimeEntryStatus @default(OPEN)
+  notes              String?
+  approvedById       String?
+  approvedAt         DateTime?
+  payRunId           String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  breaks             Break[]
+  exceptions         TimeException[]
+
+  @@unique([companyId, clientId])
+  @@index([companyId, clockInAt])
+  @@index([employeeId, clockInAt])
+}
+
+enum PunchAction {
+  CLOCK_IN
+  CLOCK_OUT
+  BREAK_START
+  BREAK_END
+}
+
+/// Raw log of every punch attempt (accepted or rejected). Also makes offline sync idempotent.
+model Punch {
+  id          String      @id @default(cuid())
+  companyId   String
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId  String
+  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  /// Client-generated UUID (offline queue) or server-generated
+  clientId    String
+  action      PunchAction
+  at          DateTime
+  receivedAt  DateTime    @default(now())
+  lat         Float?
+  lng         Float?
+  accuracy    Float?
+  source      PunchSource
+  locationId  String?
+  deviceId    String?
+  ip          String?
+  photoKey    String?
+  timeEntryId String?
+  accepted    Boolean
+  error       String?
+
+  @@unique([companyId, clientId])
+  @@index([employeeId, at])
+}
+
+model Break {
+  id          String    @id @default(cuid())
+  timeEntryId String
+  timeEntry   TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  startAt     DateTime
+  endAt       DateTime?
+  paid        Boolean   @default(false)
+  clientId    String?   @unique
+}
+
+// ───────────────────────────── Scheduling ─────────────────────────────
+
+enum ShiftStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model Shift {
+  id           String           @id @default(cuid())
+  companyId    String
+  company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  locationId   String
+  location     Location         @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  /// null = open shift that employees can claim
+  employeeId   String?
+  employee     Employee?        @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  positionId   String?
+  position     Position?        @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  startAt      DateTime
+  endAt        DateTime
+  breakMinutes Int              @default(60)
+  notes        String?
+  status       ShiftStatus      @default(DRAFT)
+  publishedAt  DateTime?
+  confirmedAt  DateTime?
+  recurrenceId String?
+  recurrence   ShiftRecurrence? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  timeEntries  TimeEntry[]
+  swapRequests ShiftSwapRequest[] @relation("SwapShift")
+  swapOffers   ShiftSwapRequest[] @relation("SwapTargetShift")
+  claims       OpenShiftClaim[]
+  exceptions   TimeException[]
+
+  @@index([companyId, startAt])
+  @@index([employeeId, startAt])
+}
+
+model ShiftRecurrence {
+  id              String    @id @default(cuid())
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// RFC 5545 RRULE, e.g. FREQ=WEEKLY;BYDAY=MO,TU,WE
+  rrule           String
+  locationId      String
+  location        Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  employeeId      String?
+  employee        Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  positionId      String?
+  position        Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  /// Minutes after local midnight
+  startMinute     Int
+  durationMinutes Int
+  breakMinutes    Int       @default(60)
+  startsOn        DateTime  @db.Date
+  endsOn          DateTime? @db.Date
+  createdAt       DateTime  @default(now())
+  shifts          Shift[]
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  CANCELED
+}
+
+enum SwapStatus {
+  PENDING_PEER
+  PENDING_MANAGER
+  APPROVED
+  DECLINED
+  CANCELED
+}
+
+model ShiftSwapRequest {
+  id               String     @id @default(cuid())
+  companyId        String
+  company          Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shiftId          String
+  shift            Shift      @relation("SwapShift", fields: [shiftId], references: [id], onDelete: Cascade)
+  requesterId      String
+  requester        Employee   @relation("SwapRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  /// Colleague who takes the shift (give-away) or trades their own shift
+  targetEmployeeId String?
+  targetEmployee   Employee?  @relation("SwapTarget", fields: [targetEmployeeId], references: [id], onDelete: Cascade)
+  targetShiftId    String?
+  targetShift      Shift?     @relation("SwapTargetShift", fields: [targetShiftId], references: [id], onDelete: Cascade)
+  note             String?
+  status           SwapStatus @default(PENDING_PEER)
+  decidedById      String?
+  decidedAt        DateTime?
+  createdAt        DateTime   @default(now())
+
+  @@index([companyId, status])
+}
+
+model OpenShiftClaim {
+  id         String        @id @default(cuid())
+  shiftId    String
+  shift      Shift         @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  status     RequestStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+
+  @@unique([shiftId, employeeId])
+}
+
+model Availability {
+  id          String    @id @default(cuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  /// Recurring weekly rule (0=Sun … 6=Sat) or a one-off date
+  weekday     Int?
+  date        DateTime? @db.Date
+  startMinute Int
+  endMinute   Int
+  available   Boolean   @default(true)
+  note        String?
+
+  @@index([employeeId])
+}
+
+// ───────────────────────────── Leave & overtime ─────────────────────────────
+
+model LeaveType {
+  id          String         @id @default(cuid())
+  companyId   String
+  company     Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  code        String
+  paid        Boolean        @default(true)
+  /// Days granted per year (0 = unlimited/unpaid tracking only)
+  annualDays  Float          @default(0)
+  /// Service Incentive Leave: requires 1 year of service, convertible to cash
+  isSil       Boolean        @default(false)
+  archivedAt  DateTime?
+  balances    LeaveBalance[]
+  requests    LeaveRequest[]
+
+  @@unique([companyId, code])
+}
+
+model LeaveBalance {
+  id          String    @id @default(cuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  year        Int
+  entitled    Float     @default(0)
+  used        Float     @default(0)
+  convertedAt DateTime?
+
+  @@unique([employeeId, leaveTypeId, year])
+}
+
+model LeaveRequest {
+  id          String        @id @default(cuid())
+  companyId   String
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId  String
+  employee    Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType   LeaveType     @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  startDate   DateTime      @db.Date
+  endDate     DateTime      @db.Date
+  days        Float
+  reason      String?
+  status      RequestStatus @default(PENDING)
+  decidedById String?
+  decidedAt   DateTime?
+  createdAt   DateTime      @default(now())
+
+  @@index([companyId, status])
+}
+
+model OvertimeRequest {
+  id          String        @id @default(cuid())
+  companyId   String
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId  String
+  employee    Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date        DateTime      @db.Date
+  minutes     Int
+  reason      String?
+  status      RequestStatus @default(PENDING)
+  decidedById String?
+  decidedAt   DateTime?
+  createdAt   DateTime      @default(now())
+
+  @@index([companyId, date])
+}
+
+enum HolidayType {
+  REGULAR
+  SPECIAL_NON_WORKING
+  SPECIAL_WORKING
+}
+
+model Holiday {
+  id        String      @id @default(cuid())
+  /// null = national holiday shared by every company
+  companyId String?
+  company   Company?    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  date      DateTime    @db.Date
+  name      String
+  type      HolidayType
+
+  @@unique([companyId, date, name])
+  @@index([date])
+}
+
+// ───────────────────────────── Exceptions & approvals ─────────────────────────────
+
+enum ExceptionType {
+  MISSED_CLOCK_OUT
+  LATE_ARRIVAL
+  EARLY_DEPARTURE
+  LONG_BREAK
+  NO_SHOW
+  OUTSIDE_GEOFENCE
+  UNAPPROVED_OVERTIME
+  MISSED_MEAL_BREAK
+  NO_REST_DAY
+  UNTRUSTED_DEVICE
+}
+
+enum ExceptionStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+model TimeException {
+  id             String          @id @default(cuid())
+  companyId      String
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId     String
+  employee       Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type           ExceptionType
+  status         ExceptionStatus @default(OPEN)
+  date           DateTime        @db.Date
+  timeEntryId    String?
+  timeEntry      TimeEntry?      @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  shiftId        String?
+  shift          Shift?          @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  details        Json            @default("{}")
+  /// Prevents detectors from raising the same exception twice
+  dedupeKey      String
+  resolvedById   String?
+  resolvedAt     DateTime?
+  resolutionNote String?
+  createdAt      DateTime        @default(now())
+
+  @@unique([companyId, dedupeKey])
+  @@index([companyId, status])
+}
+
+enum TimesheetStatus {
+  PENDING
+  APPROVED
+  LOCKED
+}
+
+model Timesheet {
+  id           String          @id @default(cuid())
+  companyId    String
+  company      Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId   String
+  employee     Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  periodStart  DateTime        @db.Date
+  periodEnd    DateTime        @db.Date
+  status       TimesheetStatus @default(PENDING)
+  approvedById String?
+  approvedAt   DateTime?
+
+  @@unique([employeeId, periodStart])
+  @@index([companyId, periodStart])
+}
+
+// ───────────────────────────── Payroll ─────────────────────────────
+
+enum PayRunKind {
+  REGULAR
+  THIRTEENTH_MONTH
+  SIL_CONVERSION
+}
+
+enum PayRunStatus {
+  DRAFT
+  COMPUTED
+  FINALIZED
+  PAID
+}
+
+model PayRun {
+  id            String       @id @default(cuid())
+  companyId     String
+  company       Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  kind          PayRunKind   @default(REGULAR)
+  periodStart   DateTime     @db.Date
+  periodEnd     DateTime     @db.Date
+  payDate       DateTime     @db.Date
+  /// 1 or 2 for semi-monthly payroll (used for contribution splits)
+  cutoffIndex   Int          @default(1)
+  status        PayRunStatus @default(DRAFT)
+  totals        Json         @default("{}")
+  computedAt    DateTime?
+  finalizedAt   DateTime?
+  finalizedById String?
+  paidAt        DateTime?
+  createdById   String?
+  createdAt     DateTime     @default(now())
+  items         PayRunItem[]
+  adjustments   PayAdjustment[]
+
+  @@index([companyId, periodStart])
+}
+
+model PayRunItem {
+  id               String   @id @default(cuid())
+  payRunId         String
+  payRun           PayRun   @relation(fields: [payRunId], references: [id], onDelete: Cascade)
+  companyId        String
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId       String
+  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  /// Minutes by category (regular, ot, nd, restDay, holiday…)
+  minutes          Json     @default("{}")
+  /// Earnings lines [{code,label,minutes?,amount}]
+  earnings         Json     @default("[]")
+  /// Deduction lines [{code,label,amount}]
+  deductions       Json     @default("[]")
+  grossCentavos    Int      @default(0)
+  sssEe            Int      @default(0)
+  sssEr            Int      @default(0)
+  sssEc            Int      @default(0)
+  philhealthEe     Int      @default(0)
+  philhealthEr     Int      @default(0)
+  pagibigEe        Int      @default(0)
+  pagibigEr        Int      @default(0)
+  taxableCentavos  Int      @default(0)
+  withholdingTax   Int      @default(0)
+  otherDeductions  Int      @default(0)
+  netCentavos      Int      @default(0)
+  tableVersions    Json     @default("{}")
+  payslipKey       String?
+  emailedAt        DateTime?
+
+  @@unique([payRunId, employeeId])
+  @@index([employeeId])
+}
+
+enum AdjustmentKind {
+  ALLOWANCE
+  BONUS
+  DEDUCTION
+  REIMBURSEMENT
+}
+
+model PayAdjustment {
+  id             String         @id @default(cuid())
+  companyId      String
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId     String
+  employee       Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payRunId       String?
+  payRun         PayRun?        @relation(fields: [payRunId], references: [id], onDelete: Cascade)
+  kind           AdjustmentKind
+  label          String
+  amountCentavos Int
+  taxable        Boolean        @default(true)
+  /// Recurring adjustments (e.g. a fixed allowance) apply to every regular pay run
+  recurring      Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+
+  @@index([companyId, employeeId])
+}
+
+enum LoanStatus {
+  ACTIVE
+  PAID
+  CANCELED
+}
+
+model Loan {
+  id                   String     @id @default(cuid())
+  companyId            String
+  company              Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId           String
+  employee             Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  label                String
+  principalCentavos    Int
+  amortizationCentavos Int
+  balanceCentavos      Int
+  startDate            DateTime   @db.Date
+  status               LoanStatus @default(ACTIVE)
+  createdAt            DateTime   @default(now())
+}
+
+enum StatutoryKind {
+  SSS
+  PHILHEALTH
+  PAGIBIG
+  WITHHOLDING_TAX
+  PREMIUMS
+}
+
+/// Government contribution and tax tables, versioned by effective date.
+model StatutoryTable {
+  id            String        @id @default(cuid())
+  kind          StatutoryKind
+  effectiveFrom DateTime      @db.Date
+  version       String
+  data          Json
+  source        String?
+  createdAt     DateTime      @default(now())
+
+  @@unique([kind, effectiveFrom])
+}
+
+// ───────────────────────────── Platform ─────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  actorUserId String?
+  actorLabel  String
+  action      String
+  entityType  String
+  entityId    String?
+  before      Json?
+  after       Json?
+  reason      String?
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model Notification {
+  id         String    @id @default(cuid())
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  kind       String
+  title      String
+  body       String?
+  url        String?
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([employeeId, createdAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+}
+
+enum BillingInterval {
+  MONTHLY
+  ANNUAL
+}
+
+model Subscription {
+  id                     String          @id @default(cuid())
+  companyId              String          @unique
+  company                Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  provider               String          @default("paymongo")
+  providerCustomerId     String?
+  providerSubscriptionId String?         @unique
+  providerPlanId         String?
+  plan                   Plan
+  interval               BillingInterval @default(MONTHLY)
+  seats                  Int
+  status                 PlanStatus
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean         @default(false)
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+}
+
+model BillingInvoice {
+  id                String    @id @default(cuid())
+  companyId         String
+  company           Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  providerInvoiceId String?   @unique
+  description       String
+  amountCentavos    Int
+  status            String
+  periodStart       DateTime?
+  periodEnd         DateTime?
+  paidAt            DateTime?
+  checkoutUrl       String?
+  createdAt         DateTime  @default(now())
+
+  @@index([companyId])
+}
+
+model BillingEvent {
+  id          String    @id @default(cuid())
+  provider    String
+  eventId     String    @unique
+  type        String
+  payload     Json
+  companyId   String?
+  processedAt DateTime?
+  error       String?
+  createdAt   DateTime  @default(now())
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  prefix      String
+  keyHash     String    @unique
+  scopes      String[]
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+}
+
+model RateLimit {
+  key     String   @id
+  count   Int
+  resetAt DateTime
+}

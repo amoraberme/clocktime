@@ -1,0 +1,32 @@
+import {
+  CalendarDays,
+  ChartColumn,
+  ClipboardCheck,
+  ClipboardList,
+  Clock,
+  LayoutDashboard,
+  MapPin,
+  Palmtree,
+  Receipt,
+  Settings,
+  TriangleAlert,
+  Users,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react";
+
+export const NAV_ICONS: Record<string, LucideIcon> = {
+  CalendarDays,
+  ChartColumn,
+  ClipboardCheck,
+  ClipboardList,
+  Clock,
+  LayoutDashboard,
+  MapPin,
+  Palmtree,
+  Receipt,
+  Settings,
+  TriangleAlert,
+  Users,
+  Wallet,
+};
