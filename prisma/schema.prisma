@@ -404,6 +404,12 @@ enum PunchSource {
   MANUAL
   AUTO
   API
+  /// Fingerprint/face/card terminal pushing its own logs (e.g. ZKTeco ADMS)
+  BIOMETRIC
+  /// Terminal log file uploaded by an admin
+  IMPORT
+  /// Added by an approved attendance correction
+  CORRECTION
 }
 
 enum TimeEntryStatus {
@@ -443,6 +449,13 @@ model TimeEntry {
   outOutsideGeofence Boolean         @default(false)
   /// Client-generated UUID so offline punches sync idempotently
   clientId           String?
+  /// Punches this entry was paired from; null for entries created before pairing or by hand
+  inPunchId          String?         @unique
+  outPunchId         String?         @unique
+  /// Edited by a manager: the pairing engine leaves it alone
+  manualOverride     Boolean         @default(false)
+  /// MISSING_OUT, LONG_DUTY, AUTO_OUT, UNSCHEDULED, OFFLINE
+  flags              String[]        @default([])
   status             TimeEntryStatus @default(OPEN)
   notes              String?
   approvedById       String?
@@ -463,31 +476,46 @@ enum PunchAction {
   CLOCK_OUT
   BREAK_START
   BREAK_END
+  /// A terminal tap with no in/out meaning; the pairing engine decides from the schedule
+  TOGGLE
 }
 
 /// Raw log of every punch attempt (accepted or rejected). Also makes offline sync idempotent.
 model Punch {
-  id          String      @id @default(cuid())
-  companyId   String
-  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employeeId  String
-  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id              String      @id @default(cuid())
+  companyId       String
+  company         Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   /// Client-generated UUID (offline queue) or server-generated
-  clientId    String
-  action      PunchAction
-  at          DateTime
-  receivedAt  DateTime    @default(now())
-  lat         Float?
-  lng         Float?
-  accuracy    Float?
-  source      PunchSource
-  locationId  String?
-  deviceId    String?
-  ip          String?
-  photoKey    String?
-  timeEntryId String?
-  accepted    Boolean
-  error       String?
+  clientId        String
+  action          PunchAction
+  at              DateTime
+  receivedAt      DateTime    @default(now())
+  lat             Float?
+  lng             Float?
+  accuracy        Float?
+  source          PunchSource
+  locationId      String?
+  deviceId        String?
+  ip              String?
+  photoKey        String?
+  timeEntryId     String?
+  accepted        Boolean
+  error           String?
+  /// FINGERPRINT, CARD, PIN, FACE, QR, GPS
+  method          String?
+  /// Captured while offline (or on a terminal) and uploaded later; `at` is the device's time
+  offline         Boolean     @default(false)
+  outsideGeofence Boolean     @default(false)
+  /// Same person punched again within a few minutes on any method; ignored for pairing
+  duplicateOfId   String?
+  /// Voided by an approved correction (kept for the audit trail)
+  voidedAt        DateTime?
+  voidedById      String?
+  voidReason      String?
+  /// Anti-proxy and integrity flags, e.g. CLOCK_SKEW, IMPOSSIBLE_TRAVEL, SHARED_DEVICE
+  flags           String[]    @default([])
 
   @@unique([companyId, clientId])
   @@index([employeeId, at])
@@ -736,6 +764,16 @@ enum ExceptionType {
   MISSED_MEAL_BREAK
   NO_REST_DAY
   UNTRUSTED_DEVICE
+  /// A duty longer than the review threshold (e.g. 16h): hours wait for HR
+  LONG_DUTY
+  /// A clock-out (or terminal tap) with no clock-in before it
+  MISSING_CLOCK_IN
+  /// A punch for a date whose payroll is already finalized
+  LOCKED_PERIOD_PUNCH
+  /// An offline punch whose time doesn't match the device's clock history
+  OFFLINE_TIME_SUSPECT
+  /// Possible buddy punching: impossible travel, shared phone, stale GPS
+  PROXY_SUSPECT
 }
 
 enum ExceptionStatus {

@@ -18,6 +18,7 @@ import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import { requireFeature, type AppContext } from "../context";
 import { prisma } from "../db";
+import { rebuildForSchedule } from "./attendance/relink";
 import { employeeScopeWhere } from "../scope";
 import { notify } from "./notifications";
 
@@ -37,11 +38,19 @@ export const shiftInputSchema = z.object({
 
 export type ShiftInput = z.infer<typeof shiftInputSchema>;
 
+function scheduleCompany(ctx: AppContext) {
+  return { id: ctx.company.id, timezone: ctx.company.timezone, settings: ctx.settings };
+}
+
 function times(ctx: AppContext, date: string, start: string, end: string) {
   const s = parseHHMM(start);
   let e = parseHHMM(end);
-  if (e <= s) e += 1440; // overnight shift
-  if (e - s > 16 * 60) throw new UserError("A shift can't be longer than 16 hours.");
+  if (e <= s) e += 1440; // overnight shift, or a 24-hour duty when start = end
+  const max = ctx.settings.maxShiftHours;
+  if (e - s > max * 60)
+    throw new UserError(
+      `A shift can't be longer than ${max} hours. Change the limit in Settings → Time rules.`,
+    );
   return {
     startAt: atMinute(date, s, ctx.company.timezone),
     endAt: atMinute(date, e, ctx.company.timezone),
@@ -189,6 +198,10 @@ export async function updateShift(
     after: { employeeId: data.employeeId, startAt: t.startAt, endAt: t.endAt, scope },
   });
   if (existing.status === "PUBLISHED") {
+    await rebuildForSchedule(scheduleCompany(ctx), [
+      { employeeId: existing.employeeId, from: existing.startAt, to: existing.endAt },
+      { employeeId: data.employeeId, from: t.startAt, to: t.endAt },
+    ]);
     const affected = new Set([existing.employeeId, data.employeeId].filter(Boolean) as string[]);
     for (const employeeId of affected) {
       await notify(ctx.company.id, employeeId, {
@@ -222,6 +235,9 @@ export async function deleteShift(ctx: AppContext, shiftId: string, scope: "one"
     before: { employeeId: existing.employeeId, startAt: existing.startAt, scope },
   });
   if (existing.status === "PUBLISHED" && existing.employeeId) {
+    await rebuildForSchedule(scheduleCompany(ctx), [
+      { employeeId: existing.employeeId, from: existing.startAt, to: existing.endAt },
+    ]);
     await notify(ctx.company.id, existing.employeeId, {
       kind: "shift.removed",
       title: "A shift was removed",
@@ -255,6 +271,11 @@ export async function moveShift(
       recurrenceId: null,
     },
   });
+  if (s.status === "PUBLISHED")
+    await rebuildForSchedule(scheduleCompany(ctx), [
+      { employeeId: s.employeeId, from: s.startAt, to: s.endAt },
+      { employeeId: target.employeeId, from: startAt, to: new Date(startAt.getTime() + duration * 60000) },
+    ]);
   await writeAudit(actorFrom(ctx), {
     action: "shift.move",
     entityType: "Shift",
@@ -279,13 +300,20 @@ export async function publishWeek(ctx: AppContext, weekStart: string, locationId
         ? { locationId: { in: ctx.managedLocationIds } }
         : {}),
   };
-  const drafts = await ctx.db.shift.findMany({ where, select: { id: true, employeeId: true } });
+  const drafts = await ctx.db.shift.findMany({
+    where,
+    select: { id: true, employeeId: true, startAt: true, endAt: true },
+  });
   if (drafts.length === 0)
     throw new UserError("Nothing to publish. All shifts this week are already published.");
   await ctx.db.shift.updateMany({
     where: { id: { in: drafts.map((d) => d.id) } },
     data: { status: "PUBLISHED", publishedAt: new Date() },
   });
+  await rebuildForSchedule(
+    scheduleCompany(ctx),
+    drafts.map((d) => ({ employeeId: d.employeeId, from: d.startAt, to: d.endAt })),
+  );
   const people = new Set(drafts.map((d) => d.employeeId).filter(Boolean) as string[]);
   for (const employeeId of people) {
     await notify(ctx.company.id, employeeId, {

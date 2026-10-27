@@ -16,6 +16,7 @@ export async function GET(req: Request) {
   const period = currentPeriod(ctx, url.searchParams.get("start") ?? undefined);
   const format = url.searchParams.get("format") === "detail" ? "detail" : "summary";
   const rows = await teamPeriodSummary(ctx, period);
+  const pay = ctx.canViewPay;
   await writeAudit(actorFrom(ctx), {
     action: "timesheets.export",
     entityType: "Timesheet",
@@ -54,15 +55,15 @@ export async function GET(req: Request) {
     [
       "Employee No",
       "Name",
-      "Pay Type",
-      "Rate (PHP)",
+      ...(pay ? ["Pay Type", "Rate (PHP)"] : []),
       "Days Worked",
       "Worked Hours",
       "Regular Hours",
       "Overtime Hours",
       "Night Diff Hours",
       "Late (min)",
-      "Gross Estimate (PHP)",
+      "Undertime (min)",
+      ...(pay ? ["Gross Estimate (PHP)"] : []),
       "Timesheet Status",
     ],
   ];
@@ -70,15 +71,15 @@ export async function GET(req: Request) {
     out.push([
       r.employee.employeeNo,
       `${r.employee.firstName} ${r.employee.lastName}`,
-      r.employee.payType,
-      centavosToPesos(r.employee.rateCentavos).toFixed(2),
+      ...(pay ? [r.employee.payType, centavosToPesos(r.employee.rateCentavos).toFixed(2)] : []),
       r.hours.totals.daysWorked,
       formatHoursDecimal(r.hours.totals.workedMinutes),
       formatHoursDecimal(r.hours.totals.regularMinutes),
       formatHoursDecimal(r.hours.totals.overtimeMinutes),
       formatHoursDecimal(r.hours.totals.nightMinutes),
       r.hours.totals.lateMinutes,
-      centavosToPesos(r.gross.gross).toFixed(2),
+      r.hours.totals.undertimeMinutes,
+      ...(pay ? [centavosToPesos(r.gross.gross).toFixed(2)] : []),
       r.timesheet?.status ?? "PENDING",
     ]);
   }

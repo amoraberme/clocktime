@@ -47,6 +47,20 @@ export const companySettingsSchema = z.object({
   requireGps: z.boolean().default(false),
   /** Bind each person to their own phone (Pro): flag or block punches from other devices */
   deviceLockMode: z.enum(["off", "flag", "block"]).default("off"),
+  /** Longest a duty can run; a clock-in older than this is treated as a missing clock-out. */
+  maxDutyHours: z.number().int().min(12).max(72).default(36),
+  /** Duties longer than this go to HR for review (not paid as overtime until approved). */
+  longDutyReviewHours: z.number().int().min(8).max(48).default(16),
+  /** A second punch by the same person within this many minutes (any method) is a duplicate. */
+  duplicatePunchMinutes: z.number().int().min(0).max(30).default(3),
+  /** Terminal taps this long before a shift starts still count as its clock-in. */
+  earlyWindowHours: z.number().int().min(1).max(12).default(4),
+  /** Terminal taps this long after a shift ends still count as its clock-out. */
+  lateWindowHours: z.number().int().min(1).max(24).default(6),
+  /** Automatic clock-outs (geofence or shift end) stay flagged until a manager confirms them. */
+  autoClockOutNeedsReview: z.boolean().default(true),
+  /** Longest shift the scheduler accepts (24-hour duties need Enterprise). */
+  maxShiftHours: z.number().int().min(4).max(48).default(16),
 });
 
 export type CompanySettings = z.infer<typeof companySettingsSchema>;

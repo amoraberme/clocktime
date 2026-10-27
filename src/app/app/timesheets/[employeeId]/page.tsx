@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ApproveButton } from "@/components/timesheets/approve-controls";
 import { EntryDialog } from "@/components/timesheets/entry-dialog";
+import { EntryFlags } from "@/components/timesheets/entry-flags";
 import { PeriodNav } from "@/components/timesheets/period-nav";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -140,7 +141,7 @@ export default async function EmployeeTimesheetPage({
         />
         <Stat label="Night diff" value={formatMinutes(result.hours.totals.nightMinutes)} />
         <Stat label="Late" value={formatMinutes(result.hours.totals.lateMinutes)} />
-        <Stat label="Gross estimate" value={formatPeso(result.gross.gross)} />
+        {ctx.canViewPay ? <Stat label="Gross estimate" value={formatPeso(result.gross.gross)} /> : null}
       </div>
 
       <Card>
@@ -180,8 +181,19 @@ export default async function EmployeeTimesheetPage({
                             <span className="tabular">
                               {formatTime(e.clockInAt, tz)} –{" "}
                               {e.clockOutAt ? formatTime(e.clockOutAt, tz) : "…"}
+                              {e.clockOutAt && dateKey(e.clockOutAt, tz) !== day ? (
+                                <span className="text-muted-foreground text-xs">
+                                  {" "}
+                                  ({formatKey(dateKey(e.clockOutAt, tz))})
+                                </span>
+                              ) : null}
                             </span>
-                            {e.inSource === "MANUAL" ? <Badge>manual</Badge> : null}
+                            <EntryFlags
+                              flags={e.flags}
+                              inSource={e.inSource}
+                              outSource={e.outSource}
+                              manualOverride={e.manualOverride}
+                            />
                             {e.inOutsideGeofence ? <Badge tone="warning">outside geofence</Badge> : null}
                             {e.shift ? (
                               <span className="text-muted-foreground text-xs">
@@ -232,39 +244,41 @@ export default async function EmployeeTimesheetPage({
         </Table>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Earnings estimate</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TBody>
-              {result.gross.lines.map((l) => (
-                <TR key={l.code}>
-                  <TD>{l.label}</TD>
-                  <TD className="tabular text-muted-foreground text-right">
-                    {l.minutes
-                      ? formatMinutes(l.minutes)
-                      : l.days
-                        ? `${l.days} day${l.days === 1 ? "" : "s"}`
-                        : ""}
-                  </TD>
-                  <TD className="tabular text-right">{formatPeso(l.amount)}</TD>
+      {ctx.canViewPay ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Earnings estimate</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TBody>
+                {result.gross.lines.map((l) => (
+                  <TR key={l.code}>
+                    <TD>{l.label}</TD>
+                    <TD className="tabular text-muted-foreground text-right">
+                      {l.minutes
+                        ? formatMinutes(l.minutes)
+                        : l.days
+                          ? `${l.days} day${l.days === 1 ? "" : "s"}`
+                          : ""}
+                    </TD>
+                    <TD className="tabular text-right">{formatPeso(l.amount)}</TD>
+                  </TR>
+                ))}
+                <TR>
+                  <TD className="font-semibold">Gross pay</TD>
+                  <TD />
+                  <TD className="tabular text-right font-semibold">{formatPeso(result.gross.gross)}</TD>
                 </TR>
-              ))}
-              <TR>
-                <TD className="font-semibold">Gross pay</TD>
-                <TD />
-                <TD className="tabular text-right font-semibold">{formatPeso(result.gross.gross)}</TD>
-              </TR>
-            </TBody>
-          </Table>
-          <p className="text-muted-foreground mt-3 text-xs">
-            Daily rate {formatPeso(result.gross.dailyRate)} · hourly {formatPeso(result.gross.hourlyRate)}.
-            Government deductions and tax are computed in Payroll.
-          </p>
-        </CardContent>
-      </Card>
+              </TBody>
+            </Table>
+            <p className="text-muted-foreground mt-3 text-xs">
+              Daily rate {formatPeso(result.gross.dailyRate)} · hourly {formatPeso(result.gross.hourlyRate)}.
+              Government deductions and tax are computed in Payroll.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

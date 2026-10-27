@@ -78,12 +78,14 @@ export default async function DashboardPage({
         />
         <Stat label="On break" value={d.onBreakCount} icon={Coffee} />
         <Stat label="Hours today" value={formatMinutes(d.minutesToday)} icon={Clock} />
-        <Stat
-          label="Labor cost today"
-          value={formatPeso(d.laborCost)}
-          hint="Base rate, before premiums"
-          icon={Wallet}
-        />
+        {ctx.canViewPay ? (
+          <Stat
+            label="Labor cost today"
+            value={formatPeso(d.laborCost)}
+            hint="Base rate, before premiums"
+            icon={Wallet}
+          />
+        ) : null}
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">

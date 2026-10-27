@@ -66,11 +66,15 @@ export default async function TimesheetsPage({
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Hours worked" value={formatMinutes(totals.worked)} />
         <Stat label="Overtime" value={formatMinutes(totals.ot)} />
-        <Stat
-          label="Gross pay estimate"
-          value={formatPeso(totals.gross)}
-          hint="Premiums included, before deductions"
-        />
+        {ctx.canViewPay ? (
+          <Stat
+            label="Gross pay estimate"
+            value={formatPeso(totals.gross)}
+            hint="Premiums included, before deductions"
+          />
+        ) : (
+          <Stat label="People" value={rows.length} />
+        )}
         <Stat label="Approved" value={`${withHours.length - pendingIds.length} / ${withHours.length}`} />
       </div>
       <Card>
@@ -83,7 +87,7 @@ export default async function TimesheetsPage({
               <TH className="text-right">Overtime</TH>
               <TH className="hidden text-right md:table-cell">Night diff</TH>
               <TH className="hidden text-right md:table-cell">Late</TH>
-              <TH className="text-right">Gross est.</TH>
+              {ctx.canViewPay ? <TH className="text-right">Gross est.</TH> : null}
               <TH>Status</TH>
             </tr>
           </THead>
@@ -115,7 +119,9 @@ export default async function TimesheetsPage({
                 <TD className="tabular hidden text-right md:table-cell">
                   {formatMinutes(hours.totals.lateMinutes)}
                 </TD>
-                <TD className="tabular text-right font-medium">{formatPeso(gross.gross)}</TD>
+                {ctx.canViewPay ? (
+                  <TD className="tabular text-right font-medium">{formatPeso(gross.gross)}</TD>
+                ) : null}
                 <TD>
                   <div className="flex flex-wrap gap-1">
                     {entries.length === 0 ? (

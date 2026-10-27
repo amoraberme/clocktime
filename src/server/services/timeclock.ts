@@ -9,6 +9,8 @@ import type { CompanySettings } from "@/lib/settings";
 import { atMinute, dateKey, keyToUtcDate } from "@/lib/time";
 import { UserError } from "../action";
 import { prisma } from "../db";
+import { rebuildAttendance } from "./attendance/rebuild";
+import { raiseRebuildIssues } from "./exceptions";
 
 export type PunchActor = {
   companyId: string;
@@ -37,14 +39,21 @@ export type PunchInput = {
   photoKey?: string | null;
   /** Kiosk punches are bound to the kiosk's location and skip phone geofencing. */
   kioskLocationId?: string | null;
+  /** FINGERPRINT, CARD, PIN, FACE, QR or GPS */
+  method?: string | null;
+  /** Punches the system makes itself (shift-end auto clock-out, approved corrections). */
+  system?: boolean;
 };
 
 export type PunchResult = {
-  entryId: string;
+  /** The duty this punch belongs to; null when it couldn't be paired (e.g. a clock-out with no clock-in). */
+  entryId: string | null;
   action: PunchAction;
   at: Date;
   locationName: string | null;
   warning?: string;
+  /** A repeat of a punch made moments before; nothing changed. */
+  duplicate?: boolean;
 };
 
 const MAX_FUTURE_MS = 2 * 60_000;
@@ -166,25 +175,6 @@ async function assertPeriodOpen(db: Db, actor: PunchActor, at: Date) {
     throw new UserError("Payroll for that date is already finalized. Ask HR to record it as an adjustment.");
 }
 
-async function findShiftFor(db: Db, companyId: string, employeeId: string, at: Date) {
-  const shifts = await db.shift.findMany({
-    where: {
-      companyId,
-      employeeId,
-      status: "PUBLISHED",
-      startAt: { lte: new Date(at.getTime() + 2 * 3600_000) },
-      endAt: { gte: at },
-    },
-    orderBy: { startAt: "asc" },
-    take: 3,
-  });
-  return (
-    shifts.sort(
-      (a, b) => Math.abs(a.startAt.getTime() - at.getTime()) - Math.abs(b.startAt.getTime() - at.getTime()),
-    )[0] ?? null
-  );
-}
-
 async function logPunch(
   db: Db,
   actor: PunchActor,
@@ -215,10 +205,82 @@ async function logPunch(
   });
 }
 
+/** The duty someone is on right now, if any (stale duties with no clock-out don't count). */
+async function openEntryFor(db: Db, actor: PunchActor, now: Date) {
+  return db.timeEntry.findFirst({
+    where: {
+      companyId: actor.companyId,
+      employeeId: actor.employee.id,
+      clockOutAt: null,
+      NOT: { flags: { has: "MISSING_OUT" } },
+      clockInAt: { gte: new Date(now.getTime() - actor.settings.maxDutyHours * 3600_000) },
+    },
+    include: { breaks: { orderBy: { startAt: "asc" } }, location: true, shift: true },
+    orderBy: { clockInAt: "desc" },
+  });
+}
+
+type OpenEntry = Awaited<ReturnType<typeof openEntryFor>>;
+
+/** A duty whose shift ended well before now was never clocked out; a new clock-in may start. */
+function isStale(open: NonNullable<OpenEntry>, actor: PunchActor, at: Date) {
+  const s = actor.settings;
+  if (open.shift) return at.getTime() > open.shift.endAt.getTime() + s.lateWindowHours * 3600_000;
+  return at.getTime() - open.clockInAt.getTime() > s.longDutyReviewHours * 3600_000;
+}
+
+/** Live phone/kiosk punches must make sense against the current state. */
+function validateLive(action: PunchAction, open: OpenEntry, actor: PunchActor, at: Date) {
+  switch (action) {
+    case "CLOCK_IN":
+      if (open && !isStale(open, actor, at))
+        throw new UserError("You're already clocked in. Clock out first.");
+      return;
+    case "CLOCK_OUT":
+      if (!open) throw new UserError("You're not clocked in.");
+      if (at <= open.clockInAt) throw new UserError("Clock-out must be after clock-in.");
+      return;
+    case "BREAK_START":
+      if (!open) throw new UserError("Clock in before starting a break.");
+      if (open.breaks.some((b) => b.endAt === null)) throw new UserError("You're already on a break.");
+      return;
+    case "BREAK_END":
+      if (!open?.breaks.some((b) => b.endAt === null)) throw new UserError("You're not on a break.");
+      return;
+    case "TOGGLE":
+      return;
+  }
+}
+
+/** The same person punching again within a few minutes (any method) counts once. */
+async function findDuplicate(db: Db, actor: PunchActor, action: PunchAction, at: Date) {
+  const window = actor.settings.duplicatePunchMinutes * 60_000;
+  if (window <= 0) return null;
+  const near = await db.punch.findMany({
+    where: {
+      companyId: actor.companyId,
+      employeeId: actor.employee.id,
+      accepted: true,
+      voidedAt: null,
+      duplicateOfId: null,
+      at: { gte: new Date(at.getTime() - window), lte: new Date(at.getTime() + window) },
+    },
+    orderBy: { at: "asc" },
+  });
+  // Only the nearest punch counts: clocking in again right after clocking out is not a repeat.
+  const nearest = near.sort(
+    (a, b) => Math.abs(a.at.getTime() - at.getTime()) - Math.abs(b.at.getTime() - at.getTime()),
+  )[0];
+  if (!nearest) return null;
+  return nearest.action === action || nearest.action === "TOGGLE" || action === "TOGGLE" ? nearest : null;
+}
+
 /**
  * Record a punch. Idempotent per clientId: replaying the same punch returns the original outcome.
  * Punches for one employee are serialized with a transaction-scoped advisory lock, so concurrent
- * syncs of the same offline queue can't create duplicate entries.
+ * syncs of the same offline queue can't create duplicate entries. Every accepted punch is added to
+ * the punch log and the person's entries are re-paired around it, so offline punches that arrive
+ * late, terminal taps and corrections all land in the right duty.
  * Throws UserError when the punch is rejected (the rejection is still logged).
  */
 export async function punch(actor: PunchActor, input: PunchInput): Promise<PunchResult> {
@@ -234,30 +296,95 @@ export async function punch(actor: PunchActor, input: PunchInput): Promise<Punch
         if (!previous.accepted) return { error: previous.error ?? "This punch was rejected." };
         return {
           result: {
-            entryId: previous.timeEntryId!,
+            entryId: previous.timeEntryId,
             action: previous.action,
             at: previous.at,
             locationName: null,
           } as PunchResult,
         };
       }
-      const now = Date.now();
-      const at = input.offline && input.at ? input.at : new Date(now);
+      const now = new Date();
+      const at = input.offline && input.at ? input.at : now;
       let locationId: string | null = null;
       try {
-        if (at.getTime() > now + MAX_FUTURE_MS)
+        if (at.getTime() > now.getTime() + MAX_FUTURE_MS)
           throw new UserError("This punch's time is in the future. Check your phone's clock.");
-        if (at.getTime() < now - MAX_AGE_MS)
+        if (
+          input.source !== "BIOMETRIC" &&
+          input.source !== "IMPORT" &&
+          at.getTime() < now.getTime() - MAX_AGE_MS
+        )
           throw new UserError("This punch is more than 3 days old. Ask your manager to add it.");
-        await assertPeriodOpen(tx, actor, at);
-        const result = await applyPunch(tx, actor, input, at, (id) => (locationId = id));
-        await logPunch(tx, actor, input, clientId, at, {
-          accepted: true,
-          entryId: result.entryId,
-          locationId,
+        // Terminal logs are facts already recorded on the device: keep them and let HR review
+        // (the rebuild raises LOCKED_PERIOD_PUNCH) rather than rejecting them.
+        if (!input.system && input.source !== "BIOMETRIC" && input.source !== "IMPORT")
+          await assertPeriodOpen(tx, actor, at);
+        const duplicate = await findDuplicate(tx, actor, input.action, at);
+        const open = await openEntryFor(tx, actor, now);
+        if (input.source === "AUTO" && !input.system) assertAutoClockOut(actor, input, open);
+        if (!duplicate && !input.offline && !input.system) validateLive(input.action, open, actor, at);
+
+        const locations = await candidateLocations(actor.companyId, actor.employee.id, tx);
+        const location =
+          input.action === "CLOCK_IN" || input.action === "TOGGLE" || !open
+            ? pickLocation(locations, input)
+            : (open.location ?? pickLocation(locations, input));
+        locationId = location?.id ?? null;
+        const policy = input.system ? { outside: false } : checkPolicies(actor, input, location);
+
+        const row = await tx.punch.create({
+          data: {
+            companyId: actor.companyId,
+            employeeId: actor.employee.id,
+            clientId,
+            action: input.action,
+            at,
+            lat: input.lat ?? null,
+            lng: input.lng ?? null,
+            accuracy: input.accuracy ?? null,
+            source: input.source,
+            method: input.method ?? null,
+            locationId,
+            deviceId: input.deviceId ?? null,
+            ip: input.ip ?? null,
+            photoKey: input.photoKey ?? null,
+            offline: !!input.offline,
+            outsideGeofence: policy.outside,
+            duplicateOfId: duplicate?.id ?? null,
+            accepted: true,
+          },
         });
-        await tx.employee.update({ where: { id: actor.employee.id }, data: { lastSeenAt: new Date() } });
-        return { result };
+        await tx.employee.update({ where: { id: actor.employee.id }, data: { lastSeenAt: now } });
+        if (duplicate) {
+          return {
+            result: {
+              entryId: duplicate.timeEntryId,
+              action: input.action,
+              at,
+              locationName: location?.name ?? null,
+              duplicate: true,
+            } as PunchResult,
+          };
+        }
+        const rebuilt = await rebuildAttendance(tx, {
+          companyId: actor.companyId,
+          timezone: actor.timezone,
+          settings: actor.settings,
+          employeeId: actor.employee.id,
+          from: at,
+          to: at,
+          now,
+        });
+        return {
+          result: {
+            entryId: rebuilt.entryByPunch.get(row.id) ?? null,
+            action: rebuilt.resolved.get(row.id) ?? input.action,
+            at,
+            locationName: location?.name ?? null,
+            warning: "warning" in policy ? policy.warning : undefined,
+          } as PunchResult,
+          rebuilt,
+        };
       } catch (err) {
         if (!(err instanceof UserError)) throw err;
         await logPunch(tx, actor, input, clientId, at, { accepted: false, error: err.message, locationId });
@@ -267,115 +394,9 @@ export async function punch(actor: PunchActor, input: PunchInput): Promise<Punch
     { timeout: 15_000 },
   );
   if ("error" in outcome) throw new UserError(outcome.error!);
+  if ("rebuilt" in outcome && outcome.rebuilt)
+    await raiseRebuildIssues(actor.companyId, actor.employee.id, actor.timezone, outcome.rebuilt);
   return outcome.result!;
-}
-
-async function applyPunch(
-  db: Db,
-  actor: PunchActor,
-  input: PunchInput,
-  at: Date,
-  setLocation: (id: string | null) => void,
-): Promise<PunchResult> {
-  const { companyId } = actor;
-  const employeeId = actor.employee.id;
-  const open = await db.timeEntry.findFirst({
-    where: { companyId, employeeId, clockOutAt: null },
-    include: { breaks: { orderBy: { startAt: "asc" } }, location: true },
-    orderBy: { clockInAt: "desc" },
-  });
-  const gps = { lat: input.lat ?? null, lng: input.lng ?? null, accuracy: input.accuracy ?? null };
-  if (input.source === "AUTO") assertAutoClockOut(actor, input, open);
-
-  switch (input.action) {
-    case "CLOCK_IN": {
-      if (open) throw new UserError("You're already clocked in. Clock out first.");
-      const last = await db.timeEntry.findFirst({
-        where: { companyId, employeeId },
-        orderBy: { clockOutAt: "desc" },
-        select: { clockOutAt: true },
-      });
-      if (last?.clockOutAt && last.clockOutAt > at)
-        throw new UserError("This clock-in overlaps your previous shift.");
-      const locations = await candidateLocations(companyId, employeeId, db);
-      const location = pickLocation(locations, input);
-      setLocation(location?.id ?? null);
-      const policy = checkPolicies(actor, input, location);
-      const shift = await findShiftFor(db, companyId, employeeId, at);
-      const entry = await db.timeEntry.create({
-        data: {
-          companyId,
-          employeeId,
-          locationId: location?.id ?? null,
-          shiftId: shift?.id ?? null,
-          clockInAt: at,
-          inLat: gps.lat,
-          inLng: gps.lng,
-          inAccuracy: gps.accuracy,
-          inSource: input.source,
-          inDeviceId: input.deviceId ?? null,
-          inIp: input.ip ?? null,
-          inPhotoKey: input.photoKey ?? null,
-          inOutsideGeofence: policy.outside,
-          status: "OPEN",
-        },
-      });
-      return {
-        entryId: entry.id,
-        action: "CLOCK_IN",
-        at,
-        locationName: location?.name ?? null,
-        warning: policy.warning,
-      };
-    }
-    case "CLOCK_OUT": {
-      if (!open) throw new UserError("You're not clocked in.");
-      if (at <= open.clockInAt) throw new UserError("Clock-out must be after clock-in.");
-      setLocation(open.locationId);
-      const policy = checkPolicies(actor, input, open.location);
-      await Promise.all([
-        db.break.updateMany({ where: { timeEntryId: open.id, endAt: null }, data: { endAt: at } }),
-        db.timeEntry.update({
-          where: { id: open.id },
-          data: {
-            clockOutAt: at,
-            outLat: gps.lat,
-            outLng: gps.lng,
-            outAccuracy: gps.accuracy,
-            outSource: input.source,
-            outDeviceId: input.deviceId ?? null,
-            outIp: input.ip ?? null,
-            outPhotoKey: input.photoKey ?? null,
-            outOutsideGeofence: policy.outside,
-            status: "CLOSED",
-          },
-        }),
-      ]);
-      return {
-        entryId: open.id,
-        action: "CLOCK_OUT",
-        at,
-        locationName: open.location?.name ?? null,
-        warning: policy.warning,
-      };
-    }
-    case "BREAK_START": {
-      if (!open) throw new UserError("Clock in before starting a break.");
-      if (open.breaks.some((b) => b.endAt === null)) throw new UserError("You're already on a break.");
-      if (at <= open.clockInAt) throw new UserError("A break can't start before clock-in.");
-      setLocation(open.locationId);
-      await db.break.create({ data: { timeEntryId: open.id, startAt: at, paid: false } });
-      return { entryId: open.id, action: "BREAK_START", at, locationName: open.location?.name ?? null };
-    }
-    case "BREAK_END": {
-      const current = open?.breaks.find((b) => b.endAt === null);
-      if (!open || !current) throw new UserError("You're not on a break.");
-      if (at <= current.startAt) throw new UserError("A break must end after it starts.");
-      setLocation(open.locationId);
-      await db.break.update({ where: { id: current.id }, data: { endAt: at } });
-      return { entryId: open.id, action: "BREAK_END", at, locationName: open.location?.name ?? null };
-    }
-  }
 }
 
 export type ClockState = {
@@ -407,11 +428,7 @@ export async function getClockState(actor: PunchActor): Promise<ClockState> {
   const employeeId = actor.employee.id;
   const todayStart = atMinute(dateKey(new Date(), actor.timezone), 0, actor.timezone);
   const [open, todays, nextShift, locations] = await Promise.all([
-    prisma.timeEntry.findFirst({
-      where: { companyId, employeeId, clockOutAt: null },
-      include: { breaks: true, location: { select: { name: true } } },
-      orderBy: { clockInAt: "desc" },
-    }),
+    openEntryFor(prisma, actor, new Date()),
     prisma.timeEntry.findMany({
       where: { companyId, employeeId, clockInAt: { gte: todayStart } },
       include: { breaks: true },

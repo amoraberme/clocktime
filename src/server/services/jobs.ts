@@ -6,6 +6,7 @@ import { prisma } from "../db";
 import { storage } from "../storage";
 import { detectOnPunch } from "./exceptions";
 import { notify } from "./notifications";
+import { punch } from "./timeclock";
 import { recurrenceDates } from "./schedule";
 
 /**
@@ -19,32 +20,53 @@ export async function autoClockOut(now = new Date()) {
       location: { autoClockOut: true },
       shift: { endAt: { lt: new Date(now.getTime() - 2 * 3600_000) } },
     },
-    include: { shift: true, company: true },
+    include: { shift: true, company: true, employee: true },
   });
   let closed = 0;
   for (const e of open) {
-    if (!hasFeature(effectivePlan(e.company, now), "geofence") || !e.shift) continue;
-    await prisma.$transaction([
-      prisma.break.updateMany({ where: { timeEntryId: e.id, endAt: null }, data: { endAt: e.shift.endAt } }),
-      prisma.timeEntry.update({
-        where: { id: e.id },
-        data: {
-          clockOutAt: e.shift.endAt,
-          outSource: "AUTO",
-          status: "CLOSED",
-          notes: "Auto clocked out at shift end",
+    const plan = effectivePlan(e.company, now);
+    if (!hasFeature(plan, "geofence") || !e.shift) continue;
+    const settings = parseSettings(e.company.settings);
+    if (e.inPunchId) {
+      // Recorded as a punch so the duty is re-paired like any other; flagged AUTO_OUT for review.
+      await punch(
+        { companyId: e.companyId, timezone: e.company.timezone, plan, settings, employee: e.employee },
+        {
+          action: "CLOCK_OUT",
+          source: "AUTO",
+          at: e.shift.endAt,
+          offline: true,
+          system: true,
+          clientId: `auto-out:${e.id}`,
         },
-      }),
-      prisma.auditLog.create({
-        data: {
-          companyId: e.companyId,
-          actorLabel: "ClockTime (auto clock-out)",
-          action: "timeEntry.autoClockOut",
-          entityType: "TimeEntry",
-          entityId: e.id,
-        },
-      }),
-    ]);
+      );
+    } else {
+      await prisma.$transaction([
+        prisma.break.updateMany({
+          where: { timeEntryId: e.id, endAt: null },
+          data: { endAt: e.shift.endAt },
+        }),
+        prisma.timeEntry.update({
+          where: { id: e.id },
+          data: {
+            clockOutAt: e.shift.endAt,
+            outSource: "AUTO",
+            status: "CLOSED",
+            notes: "Auto clocked out at shift end",
+            flags: settings.autoClockOutNeedsReview ? { push: "AUTO_OUT" } : undefined,
+          },
+        }),
+      ]);
+    }
+    await prisma.auditLog.create({
+      data: {
+        companyId: e.companyId,
+        actorLabel: "ClockTime (auto clock-out)",
+        action: "timeEntry.autoClockOut",
+        entityType: "TimeEntry",
+        entityId: e.id,
+      },
+    });
     await detectOnPunch(e.companyId, e.employeeId, e.id);
     await notify(e.companyId, e.employeeId, {
       kind: "autoclockout",

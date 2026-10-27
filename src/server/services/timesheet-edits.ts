@@ -113,6 +113,9 @@ export async function editTimeEntry(ctx: AppContext, entryId: string, raw: unkno
         outSource: clockOutAt && !before.clockOutAt ? "MANUAL" : before.outSource,
         approvedAt: null,
         approvedById: null,
+        // A manager's edit is final: the pairing engine won't re-derive this entry from punches.
+        manualOverride: true,
+        flags: [],
       },
       include: { breaks: true },
     });
@@ -145,6 +148,7 @@ export async function addManualEntry(ctx: AppContext, employeeId: string, raw: u
       inSource: "MANUAL",
       outSource: clockOutAt ? "MANUAL" : null,
       status: clockOutAt ? "CLOSED" : "OPEN",
+      manualOverride: true,
       notes: input.notes,
       breaks: { create: breaks.map((b) => ({ ...b, paid: false })) },
     },
@@ -166,7 +170,14 @@ export async function deleteTimeEntry(ctx: AppContext, entryId: string, reason: 
   if (!before) throw new UserError("Time entry not found.");
   if (before.status === "LOCKED") throw new UserError("This entry is locked by a finalized payroll run.");
   await assertEditable(ctx, before.employeeId, before.clockInAt);
-  await ctx.db.timeEntry.delete({ where: { id: entryId } });
+  // Void the entry's punches too, or the pairing engine would rebuild it from them.
+  await prisma.$transaction([
+    prisma.punch.updateMany({
+      where: { companyId: ctx.company.id, timeEntryId: entryId, voidedAt: null },
+      data: { voidedAt: new Date(), voidedById: ctx.employee.id, voidReason: reason.trim() },
+    }),
+    prisma.timeEntry.delete({ where: { id: entryId } }),
+  ]);
   await writeAudit(actorFrom(ctx), {
     action: "timeEntry.delete",
     entityType: "TimeEntry",

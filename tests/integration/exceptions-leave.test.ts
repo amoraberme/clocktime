@@ -46,7 +46,7 @@ describe("exception detection", () => {
       offline: true,
       at: atMinute(today, 8 * 60 + 20, TZ),
     });
-    expect((await prisma.timeEntry.findUnique({ where: { id: r.entryId } }))?.shiftId).toBe(shift.id);
+    expect((await prisma.timeEntry.findUnique({ where: { id: r.entryId! } }))?.shiftId).toBe(shift.id);
     await punch(actor, {
       action: "BREAK_START",
       source: "MOBILE",
@@ -65,8 +65,8 @@ describe("exception detection", () => {
       offline: true,
       at: atMinute(today, 20 * 60, TZ),
     });
-    await detectOnPunch(t.company.id, emp.id, r.entryId);
-    await detectOnPunch(t.company.id, emp.id, r.entryId); // idempotent
+    await detectOnPunch(t.company.id, emp.id, r.entryId!);
+    await detectOnPunch(t.company.id, emp.id, r.entryId!); // idempotent
     const types = (await prisma.timeException.findMany({ where: { employeeId: emp.id } }))
       .map((x) => x.type)
       .sort();

@@ -12,6 +12,7 @@ import { prisma } from "../db";
 import { assertApprover, assertEmployeeInScope } from "../scope";
 import { notifyManagers } from "./notifications";
 import { approveOvertimeFor } from "./overtime";
+import type { RebuildResult } from "./attendance/rebuild";
 
 export const EXCEPTION_LABELS: Record<ExceptionType, string> = {
   MISSED_CLOCK_OUT: "Missed clock-out",
@@ -24,6 +25,11 @@ export const EXCEPTION_LABELS: Record<ExceptionType, string> = {
   MISSED_MEAL_BREAK: "No meal break",
   NO_REST_DAY: "7 days without a rest day",
   UNTRUSTED_DEVICE: "Punch from an unrecognized device",
+  LONG_DUTY: "Long duty for review",
+  MISSING_CLOCK_IN: "Missing clock-in",
+  LOCKED_PERIOD_PUNCH: "Punch in a closed pay period",
+  OFFLINE_TIME_SUSPECT: "Offline punch time doesn't add up",
+  PROXY_SUSPECT: "Possible buddy punching",
 };
 
 type Raise = {
@@ -67,9 +73,10 @@ async function companyFor(companyId: string) {
 export async function raiseUntrustedDevice(
   companyId: string,
   employeeId: string,
-  entryId: string,
+  entryId: string | null,
   date: string,
 ) {
+  if (!entryId) return;
   await raise({
     companyId,
     employeeId,
@@ -78,6 +85,57 @@ export async function raiseUntrustedDevice(
     dedupeKey: `DEVICE:${entryId}`,
     timeEntryId: entryId,
   });
+}
+
+/**
+ * Raise the issues a pairing rebuild found: open duties with no clock-out, duties long enough
+ * for HR review, clock-outs with no clock-in, and punches dated in a finalized pay period.
+ * These are attendance integrity checks, so they apply on every plan.
+ */
+export async function raiseRebuildIssues(
+  companyId: string,
+  employeeId: string,
+  tz: string,
+  r: Pick<RebuildResult, "missingOut" | "longDuty" | "orphans" | "lockedPunches">,
+) {
+  for (const m of r.missingOut)
+    await raise({
+      companyId,
+      employeeId,
+      type: "MISSED_CLOCK_OUT",
+      date: dateKey(m.at, tz),
+      dedupeKey: `MISSOUT:${m.entryId}`,
+      timeEntryId: m.entryId,
+      details: { clockIn: m.at.toISOString() },
+    });
+  for (const l of r.longDuty)
+    await raise({
+      companyId,
+      employeeId,
+      type: "LONG_DUTY",
+      date: dateKey(l.at, tz),
+      dedupeKey: `LONGDUTY:${l.entryId}`,
+      timeEntryId: l.entryId,
+      details: { minutes: l.minutes },
+    });
+  for (const o of r.orphans.filter((x) => x.reason === "NO_CLOCK_IN"))
+    await raise({
+      companyId,
+      employeeId,
+      type: "MISSING_CLOCK_IN",
+      date: dateKey(o.at, tz),
+      dedupeKey: `NOIN:${o.punchId}`,
+      details: { punchId: o.punchId, at: o.at.toISOString() },
+    });
+  for (const p of r.lockedPunches)
+    await raise({
+      companyId,
+      employeeId,
+      type: "LOCKED_PERIOD_PUNCH",
+      date: dateKey(p.at, tz),
+      dedupeKey: `LOCKED:${p.punchId}`,
+      details: { punchId: p.punchId, at: p.at.toISOString() },
+    });
 }
 
 /** Detectors that run right after an accepted punch. */

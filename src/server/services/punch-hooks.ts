@@ -2,7 +2,8 @@ import "server-only";
 import { detectOnPunch } from "./exceptions";
 
 /** Runs after every accepted punch. Never fails the punch itself. */
-export async function afterPunch(companyId: string, employeeId: string, entryId: string) {
+export async function afterPunch(companyId: string, employeeId: string, entryId: string | null) {
+  if (!entryId) return;
   try {
     await detectOnPunch(companyId, employeeId, entryId);
   } catch (err) {

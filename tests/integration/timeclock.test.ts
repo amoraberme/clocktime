@@ -48,7 +48,7 @@ describe("time clock", () => {
       at: minutesAgo(0),
     });
     const entry = await prisma.timeEntry.findUniqueOrThrow({
-      where: { id: out.entryId },
+      where: { id: out.entryId! },
       include: { breaks: true },
     });
     expect(entry.status).toBe("CLOSED");
@@ -60,7 +60,13 @@ describe("time clock", () => {
     const { actor } = await setup();
     await expect(punch(actor, { action: "CLOCK_OUT", source: "MOBILE" })).rejects.toThrow(/not clocked in/);
     await punch(actor, { action: "CLOCK_IN", source: "MOBILE", lat: SITE.latitude, lng: SITE.longitude });
-    await expect(punch(actor, { action: "CLOCK_IN", source: "MOBILE" })).rejects.toThrow(
+    // A second tap moments later is a harmless duplicate…
+    const again = await punch(actor, { action: "CLOCK_IN", source: "MOBILE" });
+    expect(again.duplicate).toBe(true);
+    expect(await prisma.timeEntry.count({ where: { employeeId: actor.employee.id } })).toBe(1);
+    // …but outside the duplicate window it's a mistake.
+    const strict = { ...actor, settings: { ...actor.settings, duplicatePunchMinutes: 0 } };
+    await expect(punch(strict, { action: "CLOCK_IN", source: "MOBILE" })).rejects.toThrow(
       /already clocked in/,
     );
   });
@@ -68,8 +74,20 @@ describe("time clock", () => {
   it("is idempotent for replayed offline punches", async () => {
     const { actor } = await setup();
     const clientId = randomUUID();
-    const a = await punch(actor, { action: "CLOCK_IN", source: "MOBILE", clientId, at: minutesAgo(30) });
-    const b = await punch(actor, { action: "CLOCK_IN", source: "MOBILE", clientId, at: minutesAgo(30) });
+    const a = await punch(actor, {
+      action: "CLOCK_IN",
+      source: "MOBILE",
+      clientId,
+      offline: true,
+      at: minutesAgo(30),
+    });
+    const b = await punch(actor, {
+      action: "CLOCK_IN",
+      source: "MOBILE",
+      clientId,
+      offline: true,
+      at: minutesAgo(30),
+    });
     expect(b.entryId).toBe(a.entryId);
     expect(await prisma.timeEntry.count({ where: { employeeId: actor.employee.id } })).toBe(1);
   });
@@ -79,15 +97,20 @@ describe("time clock", () => {
     const clientId = randomUUID();
     const at = minutesAgo(10);
     const results = await Promise.allSettled(
-      Array.from({ length: 5 }, () => punch(actor, { action: "CLOCK_IN", source: "MOBILE", clientId, at })),
+      Array.from({ length: 5 }, () =>
+        punch(actor, { action: "CLOCK_IN", source: "MOBILE", clientId, offline: true, at }),
+      ),
     );
     expect(results.every((r) => r.status === "fulfilled")).toBe(true);
     expect(await prisma.timeEntry.count({ where: { employeeId: actor.employee.id } })).toBe(1);
-    // Different punches racing: only one clock-in can win.
-    const out = await Promise.allSettled(
+    // Different clock-outs racing: one closes the duty, the others are recorded as duplicates.
+    const out = await Promise.all(
       [1, 2, 3].map(() => punch(actor, { action: "CLOCK_OUT", source: "MOBILE" })),
     );
-    expect(out.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(out.filter((r) => !r.duplicate)).toHaveLength(1);
+    const entries = await prisma.timeEntry.findMany({ where: { employeeId: actor.employee.id } });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.clockOutAt).not.toBeNull();
   });
 
   it("blocks clock-ins outside a BLOCK geofence and logs the rejection", async () => {
@@ -128,7 +151,7 @@ describe("time clock", () => {
       lng: SITE.longitude,
     });
     expect(r.warning).toMatch(/outside HQ/);
-    const entry = await prisma.timeEntry.findUniqueOrThrow({ where: { id: r.entryId } });
+    const entry = await prisma.timeEntry.findUniqueOrThrow({ where: { id: r.entryId! } });
     expect(entry.inOutsideGeofence).toBe(true);
   });
 
