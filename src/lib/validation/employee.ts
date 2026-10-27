@@ -29,6 +29,7 @@ export const employeeInputSchema = z.object({
     .refine((n) => [261, 313, 365].includes(n), "Use 261, 313 or 365")
     .default(313),
   isMinimumWageEarner: z.coerce.boolean().default(false),
+  timeExempt: z.coerce.boolean().default(false),
   restDays: z.array(z.coerce.number().int().min(0).max(6)).default([0]),
   hireDate: z
     .string()

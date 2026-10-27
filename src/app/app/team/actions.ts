@@ -17,6 +17,7 @@ import {
 } from "@/server/services/team";
 import { pinSchema } from "@/lib/validation/employee";
 import { actorFrom, writeAudit } from "@/server/audit";
+import { resetPersonalDevices } from "@/server/device-lock";
 
 function employeeFromForm(formData: FormData) {
   const get = (k: string) => {
@@ -34,6 +35,7 @@ function employeeFromForm(formData: FormData) {
     rate: get("rate") || 0,
     workDaysPerYear: get("workDaysPerYear") || 313,
     isMinimumWageEarner: formData.get("isMinimumWageEarner") === "on",
+    timeExempt: formData.get("timeExempt") === "on",
     restDays: formData.getAll("restDays").map(Number),
     hireDate: get("hireDate"),
     departmentName: get("departmentName"),
@@ -135,4 +137,17 @@ export async function regenerateJoinCodeAction() {
     revalidatePath("/app/team");
     return code;
   }, "New join code created. The old code stops working.");
+}
+
+export async function resetDeviceAction(id: string) {
+  return run(async () => {
+    const ctx = await getContextOrThrow("MANAGER");
+    if (!(await ctx.db.employee.findUnique({ where: { id } }))) throw new Error("Employee not found");
+    await resetPersonalDevices(ctx.company.id, id);
+    await writeAudit(actorFrom(ctx), {
+      action: "employee.device.reset",
+      entityType: "Employee",
+      entityId: id,
+    });
+  }, "Phone reset. Their next punch registers a new device.");
 }

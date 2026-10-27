@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getContextOrThrow } from "@/server/context";
 import { savePunchPhoto } from "@/server/kiosk";
+import { checkPersonalDevice } from "@/server/device-lock";
+import { raiseUntrustedDevice } from "@/server/services/exceptions";
+import { dateKey } from "@/lib/time";
 import { actorOf, errorResponse } from "@/server/punch-http";
 import { clientIp } from "@/server/request";
 import { getClockState, punch } from "@/server/services/timeclock";
@@ -21,6 +24,7 @@ export async function POST(req: Request) {
     const ctx = await getContextOrThrow();
     const body = punchPayloadSchema.parse(await req.json());
     const actor = actorOf(ctx);
+    const device = await checkPersonalDevice(ctx);
     const { photo, auto, ...rest } = body;
     const result = await punch(actor, {
       ...rest,
@@ -28,7 +32,15 @@ export async function POST(req: Request) {
       source: auto ? "AUTO" : "MOBILE",
       ip: clientIp(req.headers),
       photoKey: await savePunchPhoto(ctx.company.id, photo),
+      deviceId: device.deviceId,
     });
+    if (device.flag)
+      await raiseUntrustedDevice(
+        ctx.company.id,
+        ctx.employee.id,
+        result.entryId,
+        dateKey(result.at, ctx.company.timezone),
+      );
     await afterPunch(ctx.company.id, ctx.employee.id, result.entryId);
     return NextResponse.json({ ok: true, result, state: await getClockState(actor) });
   } catch (err) {

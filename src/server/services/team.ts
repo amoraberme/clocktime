@@ -69,6 +69,7 @@ function employeeData(input: EmployeeInput) {
     rateCentavos: pesosToCentavos(input.rate),
     workDaysPerYear: input.workDaysPerYear,
     isMinimumWageEarner: input.isMinimumWageEarner,
+    timeExempt: input.timeExempt,
     restDays: input.restDays,
     hireDate: input.hireDate ? keyToUtcDate(input.hireDate) : null,
     bankName: input.bankName ?? null,

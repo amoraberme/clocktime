@@ -63,6 +63,22 @@ async function companyFor(companyId: string) {
   return { company, settings: parseSettings(company.settings), plan: effectivePlan(company) };
 }
 
+export async function raiseUntrustedDevice(
+  companyId: string,
+  employeeId: string,
+  entryId: string,
+  date: string,
+) {
+  await raise({
+    companyId,
+    employeeId,
+    type: "UNTRUSTED_DEVICE",
+    date,
+    dedupeKey: `DEVICE:${entryId}`,
+    timeEntryId: entryId,
+  });
+}
+
 /** Detectors that run right after an accepted punch. */
 export async function detectOnPunch(companyId: string, employeeId: string, entryId: string) {
   const { company, settings, plan } = await companyFor(companyId);

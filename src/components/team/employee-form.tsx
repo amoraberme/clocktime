@@ -19,6 +19,7 @@ export type EmployeeFormValues = {
   rate?: number;
   workDaysPerYear?: number;
   isMinimumWageEarner?: boolean;
+  timeExempt?: boolean;
   restDays?: number[];
   hireDate?: string | null;
   departmentName?: string | null;

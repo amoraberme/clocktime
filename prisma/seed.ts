@@ -3,7 +3,7 @@
  * Idempotent: safe to run repeatedly.
  */
 import "dotenv/config";
-import { createHmac, randomBytes, randomUUID, scryptSync } from "node:crypto";
+import { createCipheriv, createHmac, randomBytes, randomUUID, scryptSync } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { hashPassword } from "better-auth/crypto";
 import { PrismaClient } from "../src/generated/prisma/client";
@@ -89,6 +89,19 @@ function kioskPin(companyId: string, pin: string) {
       .update(`${companyId}:${pin}`)
       .digest("base64url"),
   };
+}
+
+/** Same format as encrypt() in src/server/crypto.ts. */
+function enc(plain: string) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", Buffer.from(process.env.DATA_ENCRYPTION_KEY!, "base64"), iv);
+  const ct = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  return [
+    "v1",
+    iv.toString("base64url"),
+    cipher.getAuthTag().toString("base64url"),
+    ct.toString("base64url"),
+  ].join(".");
 }
 
 async function createUser(name: string, email: string, password: string) {
@@ -271,6 +284,14 @@ async function seedDemo() {
           payType: p.payType,
           rateCentavos: p.rate,
           isMinimumWageEarner: "mwe" in p,
+          timeExempt: p.role === "OWNER",
+          // Sample (fake) government IDs and bank details for the demo
+          tinEnc: enc(`${100 + n}-${200 + n}-${300 + n}-000`),
+          sssEnc: enc(`34-${String(1000000 + n * 7919).slice(-7)}-${n}`),
+          philhealthEnc: enc(`12-${String(100000000 + n * 104729).slice(-9)}-${n}`),
+          pagibigEnc: enc(`1211-${String(1000 + n)}-${String(5000 + n)}`),
+          bankName: "BDO",
+          bankAccountEnc: enc(`00${String(1234567890 + n)}`),
           hireDate: keyToUtcDate("2024-06-01"),
           restDays: [0],
           color: p.color,

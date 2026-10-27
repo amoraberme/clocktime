@@ -270,6 +270,17 @@ describe("gross pay for monthly-rated staff (₱31,300/month, 313 factor → ₱
     expect(line(r, "REST_REG")).toBe(1560_00);
   });
 
+  it("pays exempt (managerial) staff their fixed salary with no absences or overtime", () => {
+    const r = gross(
+      [entry("2026-10-27", "08:00", "21:00", { breakAt: "12:00" })],
+      { start: "2026-10-16", end: "2026-10-31" },
+      {},
+      { ...monthly, timeExempt: true },
+    );
+    expect(r.gross).toBe(15_650_00);
+    expect(r.lines.map((l) => l.code)).toEqual(["BASIC"]);
+  });
+
   it("deducts tardiness from monthly pay", () => {
     const e = entry("2026-10-27", "08:30", "17:00", { breakAt: "12:00" });
     e.shift = { startAt: at("2026-10-27", "08:00"), endAt: at("2026-10-27", "17:00") };

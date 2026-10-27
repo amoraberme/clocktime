@@ -241,6 +241,8 @@ model Employee {
   /// Factor used to convert monthly ↔ daily rates (261, 313 or 365)
   workDaysPerYear     Int            @default(313)
   isMinimumWageEarner Boolean        @default(false)
+  /// Managerial/field staff exempt from hours-of-work rules (Labor Code art. 82): fixed salary, no absences or overtime
+  timeExempt          Boolean        @default(false)
   /// Weekdays (0=Sun … 6=Sat) that are this employee's rest days
   restDays            Int[]          @default([0])
   // Government IDs and bank account, AES-256-GCM encrypted (src/server/crypto.ts)
@@ -793,6 +795,9 @@ model PayRunItem {
   /// Deduction lines [{code,label,amount}]
   deductions       Json     @default("[]")
   grossCentavos    Int      @default(0)
+  /// Basic pay earned this period (base for 13th-month pay)
+  basicCentavos    Int      @default(0)
+  warnings         Json     @default("[]")
   sssEe            Int      @default(0)
   sssEr            Int      @default(0)
   sssEc            Int      @default(0)

@@ -1,11 +1,12 @@
 "use client";
 
-import { Archive, KeyRound, Mail, RotateCcw } from "lucide-react";
+import { Archive, KeyRound, Mail, RotateCcw, Smartphone } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
   archiveEmployeeAction,
   resendInviteAction,
+  resetDeviceAction,
   restoreEmployeeAction,
   setPinAction,
 } from "@/app/app/team/actions";
@@ -20,6 +21,7 @@ export function EmployeeActions({
   hasUser,
   hasPin,
   canArchive,
+  hasDevice,
 }: {
   id: string;
   status: string;
@@ -27,6 +29,7 @@ export function EmployeeActions({
   hasUser: boolean;
   hasPin: boolean;
   canArchive: boolean;
+  hasDevice?: boolean;
 }) {
   const [pinOpen, setPinOpen] = useState(false);
   const [pin, setPin] = useState("");
@@ -88,6 +91,11 @@ export function EmployeeActions({
             </form>
           </DialogContent>
         </Dialog>
+      ) : null}
+      {hasDevice ? (
+        <Button variant="outline" size="sm" disabled={busy} onClick={() => act(() => resetDeviceAction(id))}>
+          <Smartphone /> Reset phone
+        </Button>
       ) : null}
       {canArchive ? (
         status === "ARCHIVED" ? (

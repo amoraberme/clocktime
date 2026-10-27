@@ -37,12 +37,13 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
   if (!emp) notFound();
   const tz = ctx.company.timezone;
   const period = currentPeriod(ctx);
-  const [locations, departments, positions, entries, inputs] = await Promise.all([
+  const [locations, departments, positions, entries, inputs, devices] = await Promise.all([
     ctx.db.location.findMany({ where: { archivedAt: null }, select: { id: true, name: true } }),
     ctx.db.department.findMany({ select: { name: true } }),
     ctx.db.position.findMany({ select: { name: true } }),
     loadEntries(ctx.company.id, [emp.id], period.start, period.end, tz),
     loadPayInputs(ctx, [emp.id], period),
+    ctx.db.device.count({ where: { employeeId: emp.id, kind: "PERSONAL", revokedAt: null } }),
   ]);
   const summary = computeEmployeePeriod(ctx, emp, entries, period, inputs, todayKey(ctx));
   const qr = await QRCode.toDataURL(`clocktime:${emp.qrToken}`, { margin: 1, width: 240 });
@@ -85,6 +86,7 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
           hasUser={!!emp.userId}
           hasPin={!!emp.pinHash}
           canArchive={emp.role !== "OWNER" && emp.id !== ctx.employee.id}
+          hasDevice={devices > 0}
         />
       </div>
 
@@ -118,6 +120,7 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
                 rate: emp.rateCentavos / 100,
                 workDaysPerYear: emp.workDaysPerYear,
                 isMinimumWageEarner: emp.isMinimumWageEarner,
+                timeExempt: emp.timeExempt,
                 restDays: emp.restDays,
                 hireDate: emp.hireDate ? utcDateToKey(emp.hireDate) : null,
                 departmentName: emp.department?.name,

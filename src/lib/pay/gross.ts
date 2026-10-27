@@ -18,6 +18,8 @@ export type PayProfile = {
   workDaysPerYear: number;
   /** YYYY-MM-DD */
   hireDate?: string | null;
+  /** Exempt from hours-of-work rules: monthly salary only, no absences, tardiness or overtime */
+  timeExempt?: boolean;
 };
 
 export type EarningLine = {
@@ -128,6 +130,19 @@ export function computeGross(input: GrossInput): GrossResult {
     g.minutes += v;
     if (nd === "ND") g.ndMinutes += v;
     groups.set(`${dayType}|${kind}`, g);
+  }
+
+  if (monthly && profile.timeExempt) {
+    const periodBasic = periodBasicForMonthly(profile.rateCentavos, period.frequency);
+    add({ code: "BASIC", label: "Basic pay", amount: periodBasic });
+    return {
+      lines,
+      gross: r(periodBasic),
+      basic: r(periodBasic),
+      dailyRate: r(daily),
+      hourlyRate: r(hourly),
+      unapprovedOvertimeMinutes: 0,
+    };
   }
 
   if (monthly) {

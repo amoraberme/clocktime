@@ -161,7 +161,10 @@ export type EmployeePeriod = { hours: HoursResult; gross: GrossResult };
 
 export function computeEmployeePeriod(
   ctx: Ctx,
-  employee: Pick<Employee, "id" | "payType" | "rateCentavos" | "workDaysPerYear" | "restDays" | "hireDate">,
+  employee: Pick<
+    Employee,
+    "id" | "payType" | "rateCentavos" | "workDaysPerYear" | "restDays" | "hireDate" | "timeExempt"
+  >,
   entries: PeriodEntry[],
   period: { start: string; end: string },
   inputs: PayInputs,
@@ -180,6 +183,7 @@ export function computeEmployeePeriod(
       rateCentavos: employee.rateCentavos,
       workDaysPerYear: employee.workDaysPerYear,
       hireDate: employee.hireDate ? utcDateToKey(employee.hireDate) : null,
+      timeExempt: employee.timeExempt && employee.payType === "MONTHLY",
     },
     hours,
     ctx: hoursCtx,

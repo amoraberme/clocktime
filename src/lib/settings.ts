@@ -45,6 +45,8 @@ export const companySettingsSchema = z.object({
   /** 0 = Sunday, 1 = Monday. */
   weekStartsOn: z.union([z.literal(0), z.literal(1)]).default(1),
   requireGps: z.boolean().default(false),
+  /** Bind each person to their own phone (Pro): flag or block punches from other devices */
+  deviceLockMode: z.enum(["off", "flag", "block"]).default("off"),
 });
 
 export type CompanySettings = z.infer<typeof companySettingsSchema>;

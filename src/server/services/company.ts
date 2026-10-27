@@ -85,6 +85,7 @@ export async function createCompany(input: CreateCompanyInput) {
         email: input.owner.email,
         role: "OWNER",
         status: "ACTIVE",
+        timeExempt: true,
         hireDate: new Date(),
         employeeNo: "0001",
         locations: { create: [{ locationId: location.id }] },
