@@ -201,6 +201,11 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
                   ? `${formatKey(dateKey(emp.lastSeenAt, tz))} ${formatTime(emp.lastSeenAt, tz)}`
                   : "never"}
               </p>
+              <p className="text-muted-foreground">
+                Privacy consent: biometrics{" "}
+                {emp.biometricConsentAt ? formatKey(dateKey(emp.biometricConsentAt, tz)) : "not given"} ·
+                location {emp.locationConsentAt ? formatKey(dateKey(emp.locationConsentAt, tz)) : "not given"}
+              </p>
             </CardContent>
           </Card>
         </div>

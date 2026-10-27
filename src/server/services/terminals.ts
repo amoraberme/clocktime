@@ -17,6 +17,7 @@ import { prisma } from "../db";
 import { rebuildAttendance } from "./attendance/rebuild";
 import { detectOnPunch, raiseRebuildIssues } from "./exceptions";
 import { notifyManagers } from "./notifications";
+import { emitEvent } from "./webhooks";
 
 export type Terminal = AttendanceDevice & { company: Company; location: Location | null };
 
@@ -259,6 +260,15 @@ export async function ingestTerminalRecords(
     result.duplicates += outcome.duplicates;
     result.alreadyImported += outcome.already;
     if (outcome.rebuilt) {
+      await emitEvent(company.id, "attendance.updated", {
+        employeeId: emp.id,
+        source,
+        terminal: device?.serialNumber ?? null,
+        records: outcome.ingested,
+        from: from.toISOString(),
+        to: to.toISOString(),
+        timeEntryIds: outcome.rebuilt.entryIds,
+      });
       await raiseRebuildIssues(company.id, emp.id, company.timezone, outcome.rebuilt);
       for (const id of outcome.rebuilt.entryIds) await detectOnPunch(company.id, emp.id, id).catch(() => {});
     }

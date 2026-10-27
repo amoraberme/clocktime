@@ -9,6 +9,7 @@ import { requireFeature, type AppContext } from "../context";
 import { prisma } from "../db";
 import { recordDecision } from "./approvals";
 import { notify, notifyManagers } from "./notifications";
+import { emitEvent } from "./webhooks";
 import { loadHolidays } from "./timesheets";
 
 /** SIL (Labor Code art. 95): 5 days per year once the employee has rendered at least one year of service. */
@@ -143,6 +144,11 @@ export async function decideLeave(ctx: AppContext, id: string, approve: boolean,
     entityType: "LeaveRequest",
     entityId: id,
     reason: note,
+  });
+  await emitEvent(ctx.company.id, approve ? "request.approved" : "request.declined", {
+    type: "LEAVE",
+    requestId: req.id,
+    employeeId: req.employeeId,
   });
   await notify(ctx.company.id, req.employeeId, {
     kind: "leave.decided",

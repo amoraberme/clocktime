@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ScheduleImportDialog } from "@/components/schedule/import-dialog";
 import { ScheduleToolbar } from "@/components/schedule/toolbar";
 import { WeekGrid, type GridShift } from "@/components/schedule/week-grid";
 import { SwapRequests } from "@/components/schedule/swap-requests";
@@ -100,13 +101,16 @@ export default async function SchedulePage({
         title="Schedule"
         description={`Week of ${formatKey(weekStart, { month: "long", day: "numeric", year: "numeric" })}. Drag shifts to move them. Drafts are only visible to you until published.`}
         actions={
-          <ScheduleToolbar
-            weekStart={weekStart}
-            prevWeek={addDays(weekStart, -7)}
-            locationId={locationId}
-            drafts={drafts}
-            canAuto={ctx.can("autoSchedule")}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <ScheduleImportDialog />
+            <ScheduleToolbar
+              weekStart={weekStart}
+              prevWeek={addDays(weekStart, -7)}
+              locationId={locationId}
+              drafts={drafts}
+              canAuto={ctx.can("autoSchedule")}
+            />
+          </div>
         }
       />
       <div className="mb-4 flex flex-wrap items-center gap-2">

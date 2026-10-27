@@ -9,13 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Alert } from "@/components/ui/misc";
-import { CSV_COLUMNS, MAX_IMPORT_ROWS } from "@/lib/validation/employee";
+import { CSV_COLUMNS } from "@/lib/validation/employee";
 
 type RowResult = { row: number; ok: boolean; name?: string; error?: string };
 
 const TEMPLATE = `${CSV_COLUMNS.join(",")}\nJuan,Dela Cruz,juan@example.com,09171234567,,EMPLOYEE,DAILY,695,2025-01-15,Operations,Barista\n`;
 
-export function ImportDialog() {
+export function ImportDialog({ maxRows }: { maxRows: number }) {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [results, setResults] = useState<RowResult[] | null>(null);
@@ -36,8 +36,8 @@ export function ImportDialog() {
       header: true,
       skipEmptyLines: true,
       complete: async (res) => {
-        if (res.data.length > MAX_IMPORT_ROWS)
-          return setError(`The file has ${res.data.length} rows. Import up to ${MAX_IMPORT_ROWS} at a time.`);
+        if (res.data.length > maxRows)
+          return setError(`The file has ${res.data.length} rows. Import up to ${maxRows} at a time.`);
         setRows(res.data);
         setBusy(true);
         const r = await importEmployeesAction({ rows: res.data, dryRun: true });
@@ -76,7 +76,7 @@ export function ImportDialog() {
       </DialogTrigger>
       <DialogContent
         title="Import your team from a spreadsheet"
-        description={`Up to ${MAX_IMPORT_ROWS} rows. People with an email get an invite.`}
+        description={`Up to ${maxRows} rows. People with an email get an invite.`}
         className="max-w-2xl"
       >
         <div className="space-y-4">

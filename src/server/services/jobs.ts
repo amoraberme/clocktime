@@ -140,8 +140,10 @@ export async function shiftReminders(now = new Date()) {
 export async function cleanup(now = new Date()) {
   const companies = await prisma.company.findMany({ select: { id: true, settings: true } });
   let photos = 0;
+  let locations = 0;
   for (const c of companies) {
-    const days = parseSettings(c.settings).photoRetentionDays;
+    const settings = parseSettings(c.settings);
+    const days = settings.photoRetentionDays;
     const cutoff = new Date(now.getTime() - days * 86_400_000);
     const entries = await prisma.timeEntry.findMany({
       where: {
@@ -160,10 +162,47 @@ export async function cleanup(now = new Date()) {
       await prisma.timeEntry.update({ where: { id: e.id }, data: { inPhotoKey: null, outPhotoKey: null } });
       photos++;
     }
+    // The raw punch log keeps its own copy of the photo key.
+    const punches = await prisma.punch.findMany({
+      where: { companyId: c.id, at: { lt: cutoff }, photoKey: { not: null } },
+      select: { id: true, photoKey: true },
+    });
+    for (const p of punches) {
+      await storage()
+        .delete(p.photoKey!)
+        .catch(() => {});
+      photos++;
+    }
+    if (punches.length)
+      await prisma.punch.updateMany({
+        where: { id: { in: punches.map((p) => p.id) } },
+        data: { photoKey: null },
+      });
+
+    // Data Privacy Act: keep location only as long as needed. Times and branch stay for payroll.
+    const gpsCutoff = new Date(now.getTime() - settings.locationRetentionDays * 86_400_000);
+    const p = await prisma.punch.updateMany({
+      where: { companyId: c.id, at: { lt: gpsCutoff }, OR: [{ lat: { not: null } }, { lng: { not: null } }] },
+      data: { lat: null, lng: null, accuracy: null },
+    });
+    const t = await prisma.timeEntry.updateMany({
+      where: {
+        companyId: c.id,
+        clockInAt: { lt: gpsCutoff },
+        OR: [{ inLat: { not: null } }, { outLat: { not: null } }],
+      },
+      data: { inLat: null, inLng: null, outLat: null, outLng: null, inAccuracy: null, outAccuracy: null },
+    });
+    locations += p.count + t.count;
   }
   const notifications = await prisma.notification.deleteMany({
     where: { createdAt: { lt: new Date(now.getTime() - 90 * 86_400_000) } },
   });
   await prisma.rateLimit.deleteMany({ where: { resetAt: { lt: now } } });
-  return { photos, notifications: notifications.count, cutoffDate: keyToUtcDate(dateKey(now, "UTC")) };
+  return {
+    photos,
+    locations,
+    notifications: notifications.count,
+    cutoffDate: keyToUtcDate(dateKey(now, "UTC")),
+  };
 }

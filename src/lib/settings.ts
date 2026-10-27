@@ -44,6 +44,10 @@ export const companySettingsSchema = z.object({
   unworkedRegularHolidayPaid: z.boolean().default(true),
   unworkedSpecialDayPaid: z.boolean().default(false),
   photoRetentionDays: z.number().int().min(7).max(3650).default(90),
+  /** GPS coordinates on punches and time entries are cleared after this many days. */
+  locationRetentionDays: z.number().int().min(30).max(3650).default(365),
+  /** Owners, admins and HR must turn on two-step verification to use the admin pages. */
+  requireTwoFactor: z.boolean().default(false),
   /** 0 = Sunday, 1 = Monday. */
   weekStartsOn: z.union([z.literal(0), z.literal(1)]).default(1),
   requireGps: z.boolean().default(false),

@@ -89,6 +89,12 @@ export const CSV_COLUMNS = [
 ] as const;
 
 export const MAX_IMPORT_ROWS = 200;
+/** Enterprise companies onboard whole branches at once. */
+export const ENTERPRISE_IMPORT_ROWS = 2000;
+
+export function maxImportRows(plan: string) {
+  return plan === "ENTERPRISE" ? ENTERPRISE_IMPORT_ROWS : MAX_IMPORT_ROWS;
+}
 
 export function csvRowToInput(row: Record<string, string>): unknown {
   const get = (k: string) => {

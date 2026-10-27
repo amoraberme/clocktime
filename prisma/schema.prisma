@@ -26,8 +26,26 @@ model User {
   accounts          Account[]
   employees         Employee[]
   pushSubscriptions PushSubscription[]
+  twoFactorEnabled  Boolean?           @default(false)
+  twoFactors        TwoFactor[]
 
   @@map("user")
+}
+
+/// Better Auth two-factor (TOTP) secrets and backup codes, encrypted by Better Auth.
+model TwoFactor {
+  id                      String    @id
+  secret                  String
+  backupCodes             String
+  userId                  String
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verified                Boolean?  @default(true)
+  failedVerificationCount Int?      @default(0)
+  lockedUntil             DateTime?
+
+  @@index([secret])
+  @@index([userId])
+  @@map("twoFactor")
 }
 
 model Session {
@@ -152,6 +170,7 @@ model Company {
   approvalSteps    ApprovalStep[]
   terminals        AttendanceDevice[]
   deviceLogs       DeviceLog[]
+  webhooks         WebhookEndpoint[]
 }
 
 enum GeofenceMode {
@@ -1177,7 +1196,14 @@ model AuditLog {
   reason      String?
   ip          String?
   createdAt   DateTime @default(now())
+  /// Position in the company's hash chain (null on entries written before the chain existed)
+  seq         Int?
+  /// SHA-256 of the previous entry's hash + this entry's content: editing or deleting any
+  /// entry breaks every hash after it.
+  hash        String?
+  prevHash    String?
 
+  @@unique([companyId, seq])
   @@index([companyId, createdAt])
   @@index([entityType, entityId])
 }
@@ -1277,6 +1303,41 @@ model ApiKey {
   revokedAt   DateTime?
   createdById String?
   createdAt   DateTime  @default(now())
+}
+
+/// An HTTPS endpoint that receives signed event notifications (Enterprise).
+model WebhookEndpoint {
+  id         String            @id @default(cuid())
+  companyId  String
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  url        String
+  /// Signing secret, AES-GCM encrypted
+  secretEnc  String
+  events     String[]
+  active     Boolean           @default(true)
+  createdAt  DateTime          @default(now())
+  deliveries WebhookDelivery[]
+
+  @@index([companyId])
+}
+
+model WebhookDelivery {
+  id             String          @id @default(cuid())
+  endpointId     String
+  endpoint       WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  event          String
+  payload        Json
+  /// PENDING, DELIVERED, FAILED
+  status         String          @default("PENDING")
+  attempts       Int             @default(0)
+  nextAttemptAt  DateTime        @default(now())
+  responseStatus Int?
+  lastError      String?
+  deliveredAt    DateTime?
+  createdAt      DateTime        @default(now())
+
+  @@index([status, nextAttemptAt])
+  @@index([endpointId, createdAt])
 }
 
 model RateLimit {

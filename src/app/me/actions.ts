@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { run, UserError } from "@/server/action";
+import { actorFrom, writeAudit } from "@/server/audit";
 import { getContextOrThrow } from "@/server/context";
 import { prisma } from "@/server/db";
 import {
@@ -129,4 +130,25 @@ export async function requestOvertimeAction(input: { date: string; minutes: numb
     await requestOvertime(ctx, input);
     refresh();
   }, "Overtime request sent.");
+}
+
+/** Record the employee's informed consent to biometric and/or location processing. */
+export async function giveConsentAction(input: { biometric: boolean; location: boolean }) {
+  return run(async () => {
+    const ctx = await getContextOrThrow();
+    const now = new Date();
+    const data = {
+      ...(input.biometric && !ctx.employee.biometricConsentAt ? { biometricConsentAt: now } : {}),
+      ...(input.location && !ctx.employee.locationConsentAt ? { locationConsentAt: now } : {}),
+    };
+    if (!Object.keys(data).length) return;
+    await ctx.db.employee.update({ where: { id: ctx.employee.id }, data });
+    await writeAudit(actorFrom(ctx), {
+      action: "employee.consent",
+      entityType: "Employee",
+      entityId: ctx.employee.id,
+      after: Object.keys(data),
+    });
+    revalidatePath("/me");
+  }, "Thanks. Your consent is recorded.");
 }

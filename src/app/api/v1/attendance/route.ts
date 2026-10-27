@@ -7,7 +7,7 @@ import { buildAttendanceReport } from "@/server/services/attendance-report";
 import { currentPeriod } from "@/server/services/timesheets";
 
 /** Cutoff attendance (daily DTR rows and per-employee totals) for payroll and HR systems. */
-export const GET = apiRoute("read", async (api, req) => {
+export const GET = apiRoute("reports", async (api, req) => {
   const q = query(req);
   const { start } = z.object({ start: z.iso.date().optional() }).parse(q);
   const ctx = {

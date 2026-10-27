@@ -25,12 +25,14 @@ export function LoginForm() {
     const form = new FormData(e.currentTarget);
     setPending(true);
     setError(null);
-    const { error } = await authClient.signIn.email({
+    const { data, error } = await authClient.signIn.email({
       email: String(form.get("email")),
       password: String(form.get("password")),
     });
     setPending(false);
     if (error) return setError(error.message ?? "Wrong email or password.");
+    if (data && "twoFactorRedirect" in data && data.twoFactorRedirect)
+      return router.push(`/login/two-factor?next=${encodeURIComponent(next)}`);
     router.push(next);
     router.refresh();
   }

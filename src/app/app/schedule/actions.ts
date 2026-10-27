@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { run } from "@/server/action";
 import { getContextOrThrow } from "@/server/context";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@/server/services/schedule";
 import { autoFillOpenShifts, buildFromAvailability } from "@/server/services/auto-schedule";
 import { decideClaim, decideSwap } from "@/server/services/swaps";
+import { importSchedule, MAX_SCHEDULE_ROWS } from "@/server/services/schedule-import";
 
 const done = () => revalidatePath("/app/schedule");
 
@@ -105,4 +107,24 @@ export async function decideClaimAction(id: string, approve: boolean) {
     },
     approve ? "Shift assigned." : "Claim declined.",
   );
+}
+
+export async function importScheduleAction(input: {
+  rows: Record<string, string>[];
+  dryRun: boolean;
+  publish: boolean;
+}) {
+  return run(async () => {
+    const ctx = await getContextOrThrow("MANAGER");
+    const parsed = z
+      .object({
+        rows: z.array(z.record(z.string(), z.string())).max(MAX_SCHEDULE_ROWS),
+        dryRun: z.boolean(),
+        publish: z.boolean(),
+      })
+      .parse(input);
+    const r = await importSchedule(ctx, parsed.rows, parsed);
+    if (r.imported) done();
+    return r;
+  });
 }

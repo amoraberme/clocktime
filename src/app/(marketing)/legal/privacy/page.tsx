@@ -32,6 +32,21 @@ export default function PrivacyPage() {
         <li>
           <strong>Photos</strong>, only if your employer requires photo proof when punching.
         </li>
+        <li>
+          <strong>Fingerprint or face</strong>, only if your employer uses biometric terminals. The
+          fingerprint or face template is created and kept <em>on the terminal</em> at your branch; ClockTime
+          receives only your terminal user ID, the time and the verification method (e.g.
+          &quot;fingerprint&quot;), never the fingerprint image or template. You are asked for consent before
+          your first biometric punch, and you can ask your employer for another method (PIN, card or phone)
+          instead.
+        </li>
+        <li>
+          <strong>RFID card numbers</strong> assigned to you, stored encrypted.
+        </li>
+        <li>
+          For <strong>field staff</strong> (e.g. drivers, sales): location at each punch, with checks against
+          GPS spoofing and shared phones. We do not track you continuously between punches.
+        </li>
         <li>Payroll results and payslips.</li>
       </ul>
       <h2>Why we use it</h2>
@@ -58,7 +73,11 @@ export default function PrivacyPage() {
         </li>
         <li>
           Punch photos are deleted automatically after your employer&apos;s retention period (default 90
-          days).
+          days), and punch locations are cleared after the location retention period (default 365 days).
+        </li>
+        <li>
+          Admin accounts can be required to use two-step verification, and the audit trail is hash-chained so
+          altered or deleted entries are detectable.
         </li>
       </ul>
       <h2>Who we share it with</h2>
@@ -72,7 +91,9 @@ export default function PrivacyPage() {
       <p>
         For as long as your employer&apos;s account is active and as required by law (employment and payroll
         records are generally kept for at least three years under the Labor Code and longer for tax purposes).
-        Deleted company data is removed from active systems within 30 days and from backups within 90 days.
+        When a company account is deleted, its data is removed from our live database right away. Encrypted
+        backups are kept for up to 35 days and then expire, so deleted data is gone from backups within 35
+        days.
       </p>
       <h2>Your rights</h2>
       <p>

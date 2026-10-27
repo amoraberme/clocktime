@@ -50,6 +50,8 @@ export async function saveSettingsAction(patch: Record<string, unknown>) {
     const ctx = await getContextOrThrow("ADMIN");
     const before = parseSettings(ctx.company.settings);
     const next = companySettingsSchema.parse({ ...before, ...patch });
+    if (next.requireTwoFactor && !before.requireTwoFactor && !ctx.user.twoFactorEnabled)
+      throw new UserError("Turn on two-step verification for your own account first (Profile).");
     await prisma.company.update({ where: { id: ctx.company.id }, data: { settings: next } });
     const changed = Object.fromEntries(
       Object.entries(next).filter(([k, v]) => before[k as keyof typeof before] !== v),
@@ -113,9 +115,27 @@ export async function deleteCompanyAction(confirmName: string) {
       where: { companyId: ctx.company.id, payslipKey: { not: null } },
       select: { payslipKey: true },
     });
-    for (const f of files)
+    const [punchPhotos, entryPhotos] = await Promise.all([
+      prisma.punch.findMany({
+        where: { companyId: ctx.company.id, photoKey: { not: null } },
+        select: { photoKey: true },
+      }),
+      prisma.timeEntry.findMany({
+        where: {
+          companyId: ctx.company.id,
+          OR: [{ inPhotoKey: { not: null } }, { outPhotoKey: { not: null } }],
+        },
+        select: { inPhotoKey: true, outPhotoKey: true },
+      }),
+    ]);
+    const keys = new Set([
+      ...files.map((f) => f.payslipKey!),
+      ...punchPhotos.map((p) => p.photoKey!),
+      ...entryPhotos.flatMap((e) => [e.inPhotoKey, e.outPhotoKey]).filter((k): k is string => !!k),
+    ]);
+    for (const key of keys)
       await storage()
-        .delete(f.payslipKey!)
+        .delete(key)
         .catch(() => {});
     // Recorded at platform level (no companyId) so the entry survives the company's deletion.
     await writeAudit(

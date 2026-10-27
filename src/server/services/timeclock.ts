@@ -11,6 +11,7 @@ import { atMinute, dateKey, keyToUtcDate } from "@/lib/time";
 import { UserError } from "../action";
 import { prisma } from "../db";
 import { rebuildAttendance } from "./attendance/rebuild";
+import { emitEvent } from "./webhooks";
 import { raiseIntegrityFlags, raiseRebuildIssues } from "./exceptions";
 
 export type PunchActor = {
@@ -506,6 +507,18 @@ export async function punch(actor: PunchActor, input: PunchInput): Promise<Punch
   if ("error" in outcome) throw new UserError(outcome.error!);
   if ("rebuilt" in outcome && outcome.rebuilt)
     await raiseRebuildIssues(actor.companyId, actor.employee.id, actor.timezone, outcome.rebuilt);
+  if ("integrity" in outcome && outcome.integrity)
+    await emitEvent(actor.companyId, "punch.created", {
+      punchId: outcome.integrity.punchId,
+      employeeId: actor.employee.id,
+      action: outcome.result!.action,
+      at: outcome.result!.at.toISOString(),
+      source: input.source,
+      method: input.method ?? null,
+      offline: !!input.offline,
+      timeEntryId: outcome.result!.entryId,
+      flags: outcome.integrity.flags,
+    });
   if ("integrity" in outcome && outcome.integrity?.flags.length)
     await raiseIntegrityFlags(actor.companyId, actor.employee.id, actor.timezone, {
       ...outcome.integrity,

@@ -35,6 +35,7 @@ const TENANT_MODELS = new Set([
   "ApprovalStep",
   "AttendanceDevice",
   "DeviceLog",
+  "WebhookEndpoint",
 ]);
 
 const WHERE_OPS = new Set([

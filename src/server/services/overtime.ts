@@ -8,6 +8,7 @@ import { requireFeature, type AppContext } from "../context";
 import { assertApprover, assertEmployeeInScope, assertNotSelf } from "../scope";
 import { recordDecision } from "./approvals";
 import { notify, notifyManagers } from "./notifications";
+import { emitEvent } from "./webhooks";
 
 const requestSchema = z.object({
   date: z.iso.date(),
@@ -66,6 +67,11 @@ export async function decideOvertime(ctx: AppContext, id: string, approve: boole
     entityType: "OvertimeRequest",
     entityId: id,
     after: { minutes: minutes ?? req.minutes },
+  });
+  await emitEvent(ctx.company.id, approve ? "request.approved" : "request.declined", {
+    type: "OVERTIME",
+    requestId: req.id,
+    employeeId: req.employeeId,
   });
   await notify(ctx.company.id, req.employeeId, {
     kind: "overtime.decided",

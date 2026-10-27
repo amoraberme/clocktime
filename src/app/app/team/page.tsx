@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AddEmployeeDialog } from "@/components/team/add-employee-dialog";
 import { ImportDialog } from "@/components/team/import-dialog";
+import { maxImportRows } from "@/lib/validation/employee";
 import { JoinCodeCard } from "@/components/team/join-code-card";
 import { Badge, StatusDot } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -81,7 +82,7 @@ export default async function TeamPage({
         description={`${seats} ${seats === 1 ? "person" : "people"}${plan.maxSeats ? ` of ${plan.maxSeats} on the ${plan.name} plan` : ""}`}
         actions={
           <>
-            {ctx.canViewPay ? <ImportDialog /> : null}
+            {ctx.canViewPay ? <ImportDialog maxRows={maxImportRows(ctx.plan)} /> : null}
             {ctx.canViewPay ? (
               <AddEmployeeDialog
                 locations={locations}

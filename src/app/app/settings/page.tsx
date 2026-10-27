@@ -16,6 +16,27 @@ export default async function GeneralSettingsPage() {
         }}
       />
       <SettingsForm
+        title="Security & privacy"
+        values={ctx.settings}
+        fields={[
+          {
+            key: "requireTwoFactor",
+            label: "Require two-step verification for owners, admins and HR",
+            hint: "They're sent to their profile to set up an authenticator app before they can use the admin pages.",
+            type: "boolean",
+          },
+          {
+            key: "locationRetentionDays",
+            label: "Keep punch GPS locations for",
+            hint: "Coordinates are cleared after this; the branch and times stay for payroll and audits.",
+            type: "number",
+            min: 30,
+            max: 3650,
+            suffix: "days",
+          },
+        ]}
+      />
+      <SettingsForm
         title="Calendar"
         values={ctx.settings}
         fields={[

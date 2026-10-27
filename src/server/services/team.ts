@@ -10,7 +10,7 @@ import { fullName } from "@/lib/utils";
 import {
   csvRowToInput,
   employeeInputSchema,
-  MAX_IMPORT_ROWS,
+  maxImportRows,
   type EmployeeInput,
 } from "@/lib/validation/employee";
 import { UserError } from "../action";
@@ -22,6 +22,7 @@ import { assertEmployeeInScope } from "../scope";
 import { escapeHtml, layout, sendEmail } from "../email";
 import { activeSeatCount, splitName } from "./company";
 import { queueRosterSync } from "./terminals";
+import { emitEvent } from "./webhooks";
 
 const PALETTE = [
   "#0ea5e9",
@@ -135,8 +136,23 @@ async function managedDepartmentIds(ctx: AppContext, input: EmployeeInput) {
   return rows.map((r) => r.id);
 }
 
-/** Push the person's name, ID and card to their branches' terminals (never fails the edit). */
+/**
+ * After someone is added, changed or archived: notify webhooks and push their name, ID and card to
+ * their branches' terminals. Never fails the edit.
+ */
 async function syncTerminals(ctx: AppContext, employeeId: string) {
+  if (ctx.can("webhooks")) {
+    const e = await ctx.db.employee.findUnique({ where: { id: employeeId } });
+    if (e)
+      await emitEvent(ctx.company.id, "employee.updated", {
+        employeeId: e.id,
+        employeeNo: e.employeeNo,
+        firstName: e.firstName,
+        lastName: e.lastName,
+        status: e.status,
+        role: e.role,
+      });
+  }
   if (!ctx.can("biometricDevices")) return;
   await queueRosterSync(ctx.company.id, [employeeId]).catch((err) =>
     console.error("roster sync failed", err),
@@ -446,7 +462,8 @@ export type ImportRowResult = { row: number; ok: boolean; name?: string; error?:
 /** Validate (dryRun) or import CSV rows. Returns per-row results. */
 export async function importEmployees(ctx: AppContext, rows: Record<string, string>[], dryRun: boolean) {
   if (rows.length === 0) throw new UserError("The file has no rows.");
-  if (rows.length > MAX_IMPORT_ROWS) throw new UserError(`Import up to ${MAX_IMPORT_ROWS} people at a time.`);
+  const max = maxImportRows(ctx.plan);
+  if (rows.length > max) throw new UserError(`Import up to ${max} people at a time.`);
   const results: ImportRowResult[] = [];
   const seenEmails = new Set<string>();
   const parsed = rows.map((row, i) => {

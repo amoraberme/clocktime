@@ -81,8 +81,9 @@ const buildContext = cache(async () => {
     roleAtLeast(role, "ADMIN") || managedDepartments.length === 0
       ? null
       : managedDepartments.map((d) => d.departmentId);
+  const settings = parseSettings(company.settings);
   return {
-    user,
+    user: user as typeof user & { twoFactorEnabled?: boolean | null },
     company,
     employee,
     role,
@@ -95,7 +96,12 @@ const buildContext = cache(async () => {
     approves: (kind: Approval) => canApprove(role, kind),
     managedLocationIds,
     managedDepartmentIds,
-    settings: parseSettings(company.settings),
+    settings,
+    /** Owners, admins and HR whose company requires 2FA but who haven't turned it on yet. */
+    needsTwoFactor:
+      settings.requireTwoFactor &&
+      roleAtLeast(role, "HR") &&
+      !(user as { twoFactorEnabled?: boolean | null }).twoFactorEnabled,
     db: tenantDb(company.id),
     memberships: memberships.map((m) => ({ companyId: m.companyId, name: m.company.name, role: m.role })),
     can: (feature: Feature) => hasFeature(plan, feature),
@@ -109,6 +115,8 @@ export async function requireContext(minRole: Role = "EMPLOYEE") {
   const ctx = await buildContext();
   if (!ctx) redirect("/onboarding");
   if (!roleAtLeast(ctx.role, minRole)) redirect(ctx.isManager ? "/app" : "/me");
+  if (ctx.needsTwoFactor && roleAtLeast(minRole, "MANAGER"))
+    redirect("/me/profile?twoFactor=required#two-factor");
   return ctx;
 }
 
@@ -117,6 +125,8 @@ export async function getContextOrThrow(minRole: Role = "EMPLOYEE") {
   const ctx = await buildContext();
   if (!ctx) throw new AuthError("You need to sign in.");
   if (!roleAtLeast(ctx.role, minRole)) throw new AuthError("You don't have permission to do that.");
+  if (ctx.needsTwoFactor && roleAtLeast(minRole, "MANAGER"))
+    throw new AuthError("Turn on two-step verification in your profile first.");
   return ctx;
 }
 

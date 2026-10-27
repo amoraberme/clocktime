@@ -2,7 +2,7 @@ import "server-only";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
-import { magicLink } from "better-auth/plugins";
+import { magicLink, twoFactor } from "better-auth/plugins";
 import { prisma } from "./db";
 import { layout, sendEmail } from "./email";
 
@@ -49,6 +49,21 @@ export const auth = betterAuth({
   plugins: [
     magicLink({
       sendMagicLink: async ({ email, url }) => {
+        // A link would skip the authenticator code, so 2FA accounts sign in with password + code.
+        // Tell them by email rather than in the response, which would reveal who has 2FA on.
+        const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+        if (user?.twoFactorEnabled) {
+          await sendEmail({
+            to: email,
+            subject: "Sign in to ClockTime with your password",
+            html: layout(
+              "Use your password and authenticator",
+              "<p>Someone asked for a sign-in link for your account. Your account uses two-step verification, so email links are turned off: sign in with your password and the code from your authenticator app.</p>",
+            ),
+            text: "Your account uses two-step verification, so email sign-in links are turned off. Sign in with your password and authenticator code.",
+          });
+          return;
+        }
         await sendEmail({
           to: email,
           subject: "Your ClockTime sign-in link",
@@ -63,6 +78,11 @@ export const auth = betterAuth({
           text: `Sign in to ClockTime: ${url}`,
         });
       },
+    }),
+    twoFactor({
+      issuer: "ClockTime",
+      // Admins scan the code and must confirm one valid code before 2FA turns on.
+      skipVerificationOnEnable: false,
     }),
     nextCookies(),
   ],

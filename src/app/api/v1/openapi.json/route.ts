@@ -123,7 +123,7 @@ export function GET(req: Request) {
       "/attendance": {
         get: {
           summary:
-            "Cutoff attendance: daily DTR rows (time in/out, hours, late, undertime, OT rendered/approved, leave, absences) and per-employee and per-branch totals",
+            "(scope: reports) Cutoff attendance: daily DTR rows (time in/out, hours, late, undertime, OT rendered/approved, leave, absences) and per-employee and per-branch totals",
           parameters: [
             { name: "start", in: "query", schema: { type: "string", format: "date" } },
             { name: "department", in: "query", schema: { type: "string" } },
@@ -140,6 +140,45 @@ export function GET(req: Request) {
           summary: "Finalized pay run with per-employee contributions and tax",
           parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
           responses: { 200: { description: "OK" }, 409: { description: "Not finalized" } },
+        },
+      },
+      "/employees/{employeeNo}": {
+        put: {
+          summary:
+            "Create or update an employee by employee number (scope: write). Fields left out keep their value; branches are branch codes; archived: true/false",
+          parameters: [{ name: "employeeNo", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            200: { description: "Saved" },
+            422: { description: "Invalid (e.g. unknown branch code)" },
+          },
+        },
+      },
+      "/leave-requests": {
+        get: {
+          summary: "Leave overlapping a date range (default: approved, last and next 30 days)",
+          parameters: [
+            { name: "from", in: "query", schema: { type: "string", format: "date" } },
+            { name: "to", in: "query", schema: { type: "string", format: "date" } },
+            { name: "status", in: "query", schema: { type: "string" } },
+          ],
+          responses: { 200: { description: "OK" } },
+        },
+      },
+      "/overtime-requests": {
+        get: {
+          summary: "Overtime requests by work date (default: approved, last 31 days)",
+          parameters: [
+            { name: "from", in: "query", schema: { type: "string", format: "date" } },
+            { name: "to", in: "query", schema: { type: "string", format: "date" } },
+            { name: "status", in: "query", schema: { type: "string" } },
+          ],
+          responses: { 200: { description: "OK" } },
+        },
+      },
+      "/devices": {
+        get: {
+          summary: "Attendance terminals and whether they're online",
+          responses: { 200: { description: "OK" } },
         },
       },
       "/attendance-logs": {

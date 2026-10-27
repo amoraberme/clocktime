@@ -1,6 +1,7 @@
 import { CalendarClock } from "lucide-react";
 import type { Metadata } from "next";
 import { ClockPanel } from "@/components/clock/clock-panel";
+import { ConsentCard } from "@/components/me/consent-card";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { Card, CardContent } from "@/components/ui/card";
 import { Stat } from "@/components/ui/misc";
@@ -29,10 +30,23 @@ export default async function ClockPage() {
     loadPayInputs(ctx, [ctx.employee.id], period),
   ]);
   const summary = computeEmployeePeriod(ctx, ctx.employee, entries, period, inputs, todayKey(ctx));
+  // Ask once for consent where the company processes biometrics or punch locations.
+  const needsBiometric =
+    !ctx.employee.biometricConsentAt &&
+    ctx.can("biometricDevices") &&
+    (await ctx.db.attendanceDevice.count({ where: { status: "ACTIVE" } })) > 0;
+  const needsLocation =
+    !ctx.employee.locationConsentAt &&
+    (ctx.settings.requireGps ||
+      ctx.employee.fieldWork ||
+      (await ctx.db.location.count({ where: { archivedAt: null, geofenceMode: { not: "OFF" } } })) > 0);
 
   return (
     <div className="space-y-4">
       <InstallPrompt />
+      {needsBiometric || needsLocation ? (
+        <ConsentCard biometric={needsBiometric} location={needsLocation} />
+      ) : null}
       <ClockPanel
         initial={state}
         timezone={tz}

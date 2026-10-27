@@ -15,7 +15,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ itemId:
   const own =
     item.employeeId === ctx.employee.id &&
     (item.payRun.status === "FINALIZED" || item.payRun.status === "PAID");
-  if (!own && !ctx.isAdmin) return new Response("Not found", { status: 404 });
+  if (!own && !ctx.isHr) return new Response("Not found", { status: 404 });
   const pdf = await storage().get(item.payslipKey);
   if (!pdf) return new Response("Not found", { status: 404 });
   return new Response(new Uint8Array(pdf), {

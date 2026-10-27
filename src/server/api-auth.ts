@@ -1,7 +1,9 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import type { Feature } from "@/config/plans";
 import { effectivePlan, hasFeature } from "@/lib/entitlements";
+import type { AppContext } from "./context";
 import { parseSettings } from "@/lib/settings";
 import { UserError } from "./action";
 import { randomToken, sha256 } from "./crypto";
@@ -9,7 +11,8 @@ import { prisma } from "./db";
 import { hit } from "./rate-limit";
 import { tenantDb } from "./tenant";
 
-export const API_SCOPES = ["read", "punch"] as const;
+/** read: lists; punch: record punches and terminal logs; write: create/update employees; reports: attendance. */
+export const API_SCOPES = ["read", "punch", "write", "reports"] as const;
 export type ApiScope = (typeof API_SCOPES)[number];
 
 /** Returns the full key once; only its hash is stored. Format: ct_<prefix>_<secret>. */
@@ -47,6 +50,32 @@ async function authenticate(req: Request, scope: ApiScope) {
     settings: parseSettings(row.company.settings),
     db: tenantDb(row.companyId),
   };
+}
+
+/**
+ * A service context for API writes, acting like an admin and audited as the API key. Used to
+ * reuse the same validated services the app uses (e.g. employee upsert).
+ */
+export function apiAppContext(api: ApiContext): AppContext {
+  const can = (f: Feature) => hasFeature(api.plan, f);
+  return {
+    user: { id: null, name: `API key “${api.key.name}”`, email: "" },
+    company: api.company,
+    employee: { id: `api:${api.key.id}`, firstName: "API", lastName: api.key.name, status: "ACTIVE" },
+    role: "ADMIN",
+    plan: api.plan,
+    isManager: true,
+    isAdmin: true,
+    isHr: true,
+    canViewPay: true,
+    approves: () => true,
+    managedLocationIds: null,
+    managedDepartmentIds: null,
+    settings: api.settings,
+    db: api.db,
+    memberships: [],
+    can,
+  } as unknown as AppContext;
 }
 
 export class ApiError extends Error {

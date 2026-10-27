@@ -1,6 +1,7 @@
 import "server-only";
 import { headers } from "next/headers";
 import type { Prisma } from "@/generated/prisma/client";
+import { auditHash, verifyChain } from "@/lib/audit-chain";
 import { prisma } from "./db";
 
 type Actor = { companyId: string | null; userId?: string | null; label: string };
@@ -28,26 +29,68 @@ async function requestIp() {
   }
 }
 
-/** Append an entry to the tamper-evident audit trail. Never throws into the caller's flow. */
+/**
+ * Append an entry to the tamper-evident audit trail: entries are numbered per company and
+ * hash-chained (see `verifyAuditChain`). Never throws into the caller's flow.
+ */
 export async function writeAudit(actor: Actor, input: AuditInput) {
   try {
-    await prisma.auditLog.create({
-      data: {
+    const ip = await requestIp();
+    const before = toJson(input.before);
+    const after = toJson(input.after);
+    await prisma.$transaction(async (tx) => {
+      // One writer per company at a time, so seq numbers and links never fork.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`audit:${actor.companyId ?? "platform"}`}))`;
+      const last = await tx.auditLog.findFirst({
+        where: { companyId: actor.companyId, seq: { not: null } },
+        orderBy: { seq: "desc" },
+        select: { seq: true, hash: true },
+      });
+      const entry = {
+        seq: (last?.seq ?? 0) + 1,
         companyId: actor.companyId,
         actorUserId: actor.userId ?? null,
         actorLabel: actor.label,
         action: input.action,
         entityType: input.entityType,
         entityId: input.entityId ?? null,
-        before: toJson(input.before),
-        after: toJson(input.after),
+        before: before ?? null,
+        after: after ?? null,
         reason: input.reason ?? null,
-        ip: await requestIp(),
-      },
+        ip,
+        createdAt: new Date(),
+      };
+      const prevHash = last?.hash ?? null;
+      await tx.auditLog.create({
+        data: { ...entry, before, after, prevHash, hash: auditHash(prevHash, entry) },
+      });
     });
   } catch (err) {
     console.error("audit write failed", err);
   }
+}
+
+/** Recompute the company's audit chain. Reports the first entry that was changed, removed or reordered. */
+export async function verifyAuditChain(companyId: string) {
+  let start: { seq: number; hash: string | null } = { seq: 0, hash: null };
+  let checked = 0;
+  for (;;) {
+    const batch = await prisma.auditLog.findMany({
+      where: { companyId, seq: { gt: start.seq } },
+      orderBy: { seq: "asc" },
+      take: 2000,
+    });
+    if (!batch.length) break;
+    const r = verifyChain(
+      batch.map((b) => ({ ...b, seq: b.seq! })),
+      start,
+    );
+    checked += r.checked;
+    if (!r.ok) return { ok: false as const, checked, brokenAtSeq: r.brokenAtSeq, problem: r.problem };
+    start = r.last;
+  }
+  const legacy = await prisma.auditLog.count({ where: { companyId, seq: null } });
+  return { ok: true as const, checked, legacy, lastSeq: start.seq };
 }
 
 export function actorFrom(ctx: {

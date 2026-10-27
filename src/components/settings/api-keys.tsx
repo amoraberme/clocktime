@@ -55,7 +55,7 @@ export function CreateKeyForm() {
             placeholder="e.g. Accounting export, Biometric terminal"
           />
         </Field>
-        {(["read", "punch"] as const).map((s) => (
+        {(["read", "punch", "write", "reports"] as const).map((s) => (
           <label key={s} className="flex h-10 items-center gap-2 text-sm">
             <Checkbox
               checked={scopes.includes(s)}

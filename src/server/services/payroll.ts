@@ -21,6 +21,7 @@ import { UserError } from "../action";
 import { actorFrom, writeAudit } from "../audit";
 import { requireFeature, type AppContext } from "../context";
 import { prisma } from "../db";
+import { emitEvent } from "./webhooks";
 import { escapeHtml, layout, sendEmail } from "../email";
 import { leaveBalances } from "./leave";
 import { notify } from "./notifications";
@@ -308,7 +309,7 @@ export async function removeAdjustment(ctx: AppContext, adjustmentId: string, ru
 /** Lock the run: freeze timesheets and time entries, apply loan payments, generate payslips. */
 export async function finalizePayRun(ctx: AppContext, runId: string) {
   requireFeature(ctx, "payroll");
-  if (!ctx.isAdmin) throw new UserError("Only owners and admins can finalize payroll.");
+  if (!ctx.isHr) throw new UserError("Only owners, admins and HR can finalize payroll.");
   const run = await ctx.db.payRun.findUnique({
     where: { id: runId },
     include: { items: { include: { employee: true } } },
@@ -379,6 +380,13 @@ export async function finalizePayRun(ctx: AppContext, runId: string) {
     entityType: "PayRun",
     entityId: run.id,
     after: run.totals,
+  });
+  await emitEvent(ctx.company.id, "payrun.finalized", {
+    payRunId: run.id,
+    periodStart: run.periodStart.toISOString().slice(0, 10),
+    periodEnd: run.periodEnd.toISOString().slice(0, 10),
+    payDate: run.payDate.toISOString().slice(0, 10),
+    totals: run.totals,
   });
   await generatePayslips(ctx, run.id);
 }

@@ -21,6 +21,7 @@ import { assertEmployeeInScope } from "../scope";
 import { recordDecision } from "./approvals";
 import { rebuildForSchedule } from "./attendance/relink";
 import { notify, notifyManagers } from "./notifications";
+import { emitEvent } from "./webhooks";
 import { assertPeriodOpen, punch } from "./timeclock";
 
 // ───────────── Schedule change requests ─────────────
@@ -187,6 +188,11 @@ export async function decideScheduleChange(ctx: AppContext, id: string, approve:
     after: { kind: req.kind, date: utcDateToKey(req.date), change: describeSchedule(req) },
     reason: note,
   });
+  await emitEvent(ctx.company.id, approve ? "request.approved" : "request.declined", {
+    type: "SCHEDULE",
+    requestId: req.id,
+    employeeId: req.employeeId,
+  });
   await notify(ctx.company.id, req.employeeId, {
     kind: "schedule.decided",
     title: `Schedule change ${approve ? "approved" : "declined"}`,
@@ -347,6 +353,11 @@ export async function decideCorrection(ctx: AppContext, id: string, approve: boo
     entityId: id,
     after: { change: describeCorrection(req, tz), timeEntryId: req.timeEntryId },
     reason: note,
+  });
+  await emitEvent(ctx.company.id, approve ? "request.approved" : "request.declined", {
+    type: "CORRECTION",
+    requestId: req.id,
+    employeeId: req.employeeId,
   });
   await notify(ctx.company.id, req.employeeId, {
     kind: "correction.decided",

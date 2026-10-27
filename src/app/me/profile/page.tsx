@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { PhoneForm, PinForm, PushToggle } from "@/components/me/profile-forms";
 import { NotificationsList } from "@/components/me/notifications-list";
+import { TwoFactorCard } from "@/components/me/two-factor-card";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, Avatar } from "@/components/ui/misc";
@@ -39,6 +40,12 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           </p>
         </div>
       </div>
+      {ctx.isManager ? (
+        <TwoFactorCard
+          enabled={!!ctx.user.twoFactorEnabled}
+          required={ctx.settings.requireTwoFactor && ctx.isHr}
+        />
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle>Notifications</CardTitle>

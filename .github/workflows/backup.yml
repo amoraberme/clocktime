@@ -1,0 +1,70 @@
+name: Nightly database backup
+
+# Encrypted logical backup to Cloudflare R2 (S3-compatible), in addition to Neon's point-in-time
+# recovery. Restore steps: docs/runbooks/restore.md. Retention: an R2 lifecycle rule deletes objects
+# under backups/ after 35 days (the privacy notice promises deleted data leaves backups by then).
+#
+# Repository secrets: BACKUP_DATABASE_URL (direct, non-pooled connection string), BACKUP_PASSPHRASE,
+# R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BACKUP_BUCKET.
+
+on:
+  schedule:
+    - cron: "17 18 * * *" # 02:17 Asia/Manila
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      BUCKET: ${{ secrets.R2_BACKUP_BUCKET }}
+    steps:
+      - name: Check configuration
+        id: cfg
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$PASSPHRASE" ] || [ -z "$BUCKET" ]; then
+            echo "Backup secrets are not configured; skipping." >> "$GITHUB_STEP_SUMMARY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install PostgreSQL 16 client
+        if: steps.cfg.outputs.skip != 'true'
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-16
+      - name: Dump, encrypt and upload
+        if: steps.cfg.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          name="clocktime-$(date -u +%Y%m%dT%H%M%SZ).dump.gpg"
+          /usr/lib/postgresql/16/bin/pg_dump --format=custom --no-owner --no-privileges "$DATABASE_URL" \
+            | gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase-fd 3 3<<<"$PASSPHRASE" -o "$name"
+          size=$(stat -c %s "$name")
+          if [ "$size" -lt 1024 ]; then echo "Backup is suspiciously small ($size bytes)"; exit 1; fi
+          sha256sum "$name" > "$name.sha256"
+          aws s3 cp "$name" "s3://$BUCKET/backups/$name" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          aws s3 cp "$name.sha256" "s3://$BUCKET/backups/$name.sha256" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          echo "Uploaded \`backups/$name\` ($((size / 1024)) KiB)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify the backup restores
+        if: steps.cfg.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          f=$(ls clocktime-*.dump.gpg)
+          gpg --batch --decrypt --passphrase-fd 3 3<<<"$PASSPHRASE" "$f" > restore.dump
+          /usr/lib/postgresql/16/bin/pg_restore --list restore.dump | grep -q 'TABLE public "AuditLog"'
+          echo "Archive decrypts and lists its tables." >> "$GITHUB_STEP_SUMMARY"
+          rm -f restore.dump
