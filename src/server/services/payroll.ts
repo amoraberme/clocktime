@@ -428,6 +428,8 @@ export async function markPaid(ctx: AppContext, runId: string, emailPayslips: bo
   if (!run || run.status !== "FINALIZED") throw new UserError("Finalize the pay run first.");
   await ctx.db.payRun.update({ where: { id: runId }, data: { status: "PAID", paidAt: new Date() } });
   await writeAudit(actorFrom(ctx), { action: "payroll.paid", entityType: "PayRun", entityId: runId });
+  let emailed = 0;
+  let emailFailed = 0;
   for (const item of run.items) {
     await notify(ctx.company.id, item.employeeId, {
       kind: "payslip",
@@ -438,18 +440,26 @@ export async function markPaid(ctx: AppContext, runId: string, emailPayslips: bo
     if (emailPayslips && item.employee.email && item.payslipKey) {
       const pdf = await storage().get(item.payslipKey);
       if (!pdf) continue;
-      await sendEmail({
-        to: item.employee.email,
-        subject: `Payslip · ${ctx.company.name} · ${utcDateToKey(run.payDate)}`,
-        html: layout(
-          "Your payslip",
-          `<p>Hi ${escapeHtml(item.employee.firstName)}, your payslip for ${utcDateToKey(run.periodStart)} to ${utcDateToKey(run.periodEnd)} is attached.</p>`,
-        ),
-        attachments: [{ filename: `payslip-${utcDateToKey(run.payDate)}.pdf`, content: pdf }],
-      });
-      await prisma.payRunItem.update({ where: { id: item.id }, data: { emailedAt: new Date() } });
+      // The run is already paid: one bad address mustn't stop everyone else's payslip.
+      try {
+        await sendEmail({
+          to: item.employee.email,
+          subject: `Payslip · ${ctx.company.name} · ${utcDateToKey(run.payDate)}`,
+          html: layout(
+            "Your payslip",
+            `<p>Hi ${escapeHtml(item.employee.firstName)}, your payslip for ${utcDateToKey(run.periodStart)} to ${utcDateToKey(run.periodEnd)} is attached.</p>`,
+          ),
+          attachments: [{ filename: `payslip-${utcDateToKey(run.payDate)}.pdf`, content: pdf }],
+        });
+        await prisma.payRunItem.update({ where: { id: item.id }, data: { emailedAt: new Date() } });
+        emailed++;
+      } catch (err) {
+        console.error("payslip email failed", item.employee.email, err);
+        emailFailed++;
+      }
     }
   }
+  return { emailed, emailFailed };
 }
 
 export async function deletePayRun(ctx: AppContext, runId: string) {

@@ -64,7 +64,7 @@ export async function addEmployeeAction(_prev: unknown, formData: FormData) {
       sendInvite: formData.get("sendInvite") === "on",
     });
     revalidatePath("/app/team");
-    return { id: emp.id };
+    return { id: emp.id, warning: emp.inviteError };
   }, "Team member added.");
 }
 

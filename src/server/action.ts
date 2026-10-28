@@ -40,6 +40,8 @@ export async function run<T>(fn: () => Promise<T>, message?: string): Promise<Ac
     ) {
       throw err;
     }
+    const duplicate = duplicateMessage(err);
+    if (duplicate) return { ok: false, error: duplicate };
     console.error(err);
     return { ok: false, error: "Something went wrong. Please try again." };
   }
@@ -54,4 +56,44 @@ export function formToObject(formData: FormData) {
     else out[key] = Array.isArray(existing) ? [...existing, value] : [existing, value];
   }
   return out;
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  employeeNo: "employee number",
+  deviceUserId: "terminal ID",
+  cardLookup: "RFID card",
+  pinLookup: "kiosk PIN",
+  email: "email",
+  code: "code",
+  name: "name",
+  serialNumber: "serial number",
+  userId: "account",
+};
+
+/**
+ * A unique-constraint error (Prisma P2002) that slipped past a service's own checks, as a message
+ * people can act on instead of "Something went wrong".
+ */
+function duplicateMessage(err: unknown) {
+  const e = err as {
+    code?: string;
+    meta?: {
+      target?: unknown;
+      driverAdapterError?: { cause?: { constraint?: { fields?: string[]; index?: string } } };
+    };
+  };
+  if (e?.code !== "P2002") return null;
+  const constraint = e.meta?.driverAdapterError?.cause?.constraint;
+  const target =
+    e.meta?.target ??
+    constraint?.fields ??
+    // "Employee_companyId_employeeNo_key" → ["companyId", "employeeNo"]
+    constraint?.index?.split("_").slice(1, -1);
+  const fields = (Array.isArray(target) ? target : typeof target === "string" ? [target] : [])
+    .map(String)
+    .filter((f) => f !== "companyId");
+  const label = fields.map((f) => FIELD_LABELS[f] ?? f).join(" and ");
+  return label
+    ? `That ${label} is already in use. Use a different one.`
+    : "That value is already in use. Use a different one.";
 }

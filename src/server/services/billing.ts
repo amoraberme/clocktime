@@ -226,6 +226,7 @@ export async function billingSweep(now = new Date()) {
   for (const c of companies) {
     const admins = c.employees.filter((e) => e.email).map((e) => e.email!);
     const notifyAdmins = async (subject: string, body: string) => {
+      // A failed email mustn't stop the sweep for every company after this one.
       for (const to of admins)
         await sendEmail({
           to,
@@ -234,7 +235,7 @@ export async function billingSweep(now = new Date()) {
             label: "Manage billing",
             url: `${appUrl}/app/settings/billing`,
           }),
-        });
+        }).catch((err) => console.error("billing reminder email failed", to, err));
       reminders++;
     };
     if (c.planStatus === "ACTIVE" && c.paidThrough) {

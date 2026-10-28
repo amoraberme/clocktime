@@ -100,8 +100,21 @@ export async function raiseRebuildIssues(
   companyId: string,
   employeeId: string,
   tz: string,
-  r: Pick<RebuildResult, "missingOut" | "longDuty" | "orphans" | "lockedPunches">,
+  r: Pick<RebuildResult, "missingOut" | "longDuty" | "orphans" | "lockedPunches"> &
+    Partial<Pick<RebuildResult, "entryIds">>,
 ) {
+  // A clock-out that arrived later (an offline phone syncing the next day) closes the duty:
+  // its "missed clock-out" no longer applies.
+  if (r.entryIds?.length)
+    await prisma.timeException.updateMany({
+      where: {
+        companyId,
+        type: "MISSED_CLOCK_OUT",
+        status: "OPEN",
+        timeEntry: { id: { in: r.entryIds }, clockOutAt: { not: null } },
+      },
+      data: { status: "RESOLVED", resolvedAt: new Date(), resolutionNote: "Clock-out received" },
+    });
   for (const m of r.missingOut)
     await raise({
       companyId,

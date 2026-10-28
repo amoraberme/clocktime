@@ -13,6 +13,8 @@ const config = [
       "test-results/**",
       "public/sw.js",
       "next-env.d.ts",
+      // Standalone website archiver tool (own package.json), not part of the app
+      "resotemp/**",
     ],
   },
   {

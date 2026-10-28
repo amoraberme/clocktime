@@ -191,6 +191,7 @@ export async function addEmployee(ctx: AppContext, raw: unknown, opts: { sendInv
     });
     if (dupe) throw new UserError(`${input.email} is already on your team.`);
   }
+  if (input.employeeNo) await assertEmployeeNoFree(ctx, input.employeeNo);
   const [departmentId, positionId, locationIds, employeeNo, attendance, managedDepts] = await Promise.all([
     resolveNamed(ctx.company.id, "department", input.departmentName),
     resolveNamed(ctx.company.id, "position", input.positionName),
@@ -226,9 +227,22 @@ export async function addEmployee(ctx: AppContext, raw: unknown, opts: { sendInv
       rateCentavos: employee.rateCentavos,
     },
   });
-  if (input.email && opts.sendInvite !== false) await sendInvitation(ctx, employee.id);
   await syncTerminals(ctx, employee.id);
-  return employee;
+  // The person is saved; a failed invite email is a warning, not a failed add (retrying would
+  // only hit "already on your team").
+  let inviteError: string | null = null;
+  if (input.email && opts.sendInvite !== false)
+    await sendInvitation(ctx, employee.id).catch((err) => {
+      inviteError = err instanceof Error ? err.message : "The invite email couldn't be sent.";
+    });
+  return Object.assign(employee, { inviteError });
+}
+
+async function assertEmployeeNoFree(ctx: AppContext, employeeNo: string, employeeId?: string) {
+  const taken = await ctx.db.employee.findFirst({
+    where: { employeeNo, ...(employeeId ? { id: { not: employeeId } } : {}) },
+  });
+  if (taken) throw new UserError(`Employee no. ${employeeNo} is already used by ${fullName(taken)}.`);
 }
 
 export async function updateEmployee(ctx: AppContext, employeeId: string, raw: unknown) {
@@ -250,6 +264,8 @@ export async function updateEmployee(ctx: AppContext, employeeId: string, raw: u
   await assertEmployeeInScope(ctx, employeeId).catch(() => {
     throw new UserError("You can only edit people at locations you manage.");
   });
+  if (input.employeeNo && input.employeeNo !== before.employeeNo)
+    await assertEmployeeNoFree(ctx, input.employeeNo, employeeId);
   const [departmentId, positionId, locationIds, attendance, managedDepts] = await Promise.all([
     resolveNamed(ctx.company.id, "department", input.departmentName),
     resolveNamed(ctx.company.id, "position", input.positionName),
@@ -348,17 +364,35 @@ export async function sendInvitation(ctx: AppContext, employeeId: string) {
     },
   });
   const url = `${process.env.APP_URL ?? "http://localhost:3000"}/invite/${token}`;
-  await sendEmail({
-    to: emp.email,
-    subject: `${ctx.company.name} invited you to ClockTime`,
-    html: layout(
-      `Join ${ctx.company.name} on ClockTime`,
-      `<p>Hi ${escapeHtml(emp.firstName)},</p><p>${escapeHtml(ctx.user.name)} added you to <b>${escapeHtml(ctx.company.name)}</b>. Set up your account to clock in, see your schedule and get your payslips.</p>`,
-      { label: "Set up my account", url },
-    ),
-    text: `Join ${ctx.company.name} on ClockTime: ${url}`,
-  });
+  try {
+    await sendEmail({
+      to: emp.email,
+      subject: `${ctx.company.name} invited you to ClockTime`,
+      html: layout(
+        `Join ${ctx.company.name} on ClockTime`,
+        `<p>Hi ${escapeHtml(emp.firstName)},</p><p>${escapeHtml(ctx.user.name)} added you to <b>${escapeHtml(ctx.company.name)}</b>. Set up your account to clock in, see your schedule and get your payslips.</p>`,
+        { label: "Set up my account", url },
+      ),
+      text: `Join ${ctx.company.name} on ClockTime: ${url}`,
+    });
+  } catch (err) {
+    console.error("invite email failed", err);
+    throw new UserError(
+      `The invite email to ${emp.email} couldn't be sent (${emailFailure(err)}). ` +
+        "Check the email settings (EMAIL_PROVIDER, RESEND_API_KEY and a verified EMAIL_FROM domain), then use Resend invite.",
+    );
+  }
   return url;
+}
+
+/** A short reason from the email provider's error, without credentials. */
+function emailFailure(err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  const status = /error (\d{3})/i.exec(msg)?.[1];
+  if (status === "401" || status === "403") return "the email service refused the sender or the API key";
+  if (status === "422") return "the email service rejected the address or the sender domain";
+  if (status) return `email service error ${status}`;
+  return msg.split("\n")[0]!.slice(0, 120);
 }
 
 export async function findInvitation(token: string) {

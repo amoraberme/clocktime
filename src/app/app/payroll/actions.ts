@@ -52,13 +52,18 @@ export async function finalizeAction(id: string) {
 }
 
 export async function markPaidAction(id: string, email: boolean) {
-  return run(
-    async () => {
-      await markPaid(await getContextOrThrow("HR"), id, email);
-      refresh();
-    },
-    email ? "Marked paid and payslips emailed." : "Marked paid. Staff can see their payslips in the app.",
-  );
+  const r = await run(async () => {
+    const sent = await markPaid(await getContextOrThrow("HR"), id, email);
+    refresh();
+    return sent;
+  });
+  if (!r.ok) return r;
+  const message = !email
+    ? "Marked paid. Staff can see their payslips in the app."
+    : r.data.emailFailed
+      ? `Marked paid. ${r.data.emailed} payslips emailed; ${r.data.emailFailed} couldn't be sent (check the email settings). Everyone can still see theirs in the app.`
+      : "Marked paid and payslips emailed.";
+  return { ...r, message };
 }
 
 export async function deleteRunAction(id: string) {

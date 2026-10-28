@@ -67,7 +67,9 @@ describe("exception detection", () => {
     });
     await detectOnPunch(t.company.id, emp.id, r.entryId!);
     await detectOnPunch(t.company.id, emp.id, r.entryId!); // idempotent
-    const types = (await prisma.timeException.findMany({ where: { employeeId: emp.id } }))
+    // Open ones only: depending on the time of day the lone clock-in was briefly a missed
+    // clock-out, which the later clock-out resolves.
+    const types = (await prisma.timeException.findMany({ where: { employeeId: emp.id, status: "OPEN" } }))
       .map((x) => x.type)
       .sort();
     expect(types).toEqual(["LATE_ARRIVAL", "LONG_BREAK", "UNAPPROVED_OVERTIME"]);

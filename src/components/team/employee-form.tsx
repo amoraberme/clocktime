@@ -66,6 +66,8 @@ export function EmployeeForm({
   useEffect(() => {
     if (state?.ok) {
       toast.success(state.message ?? "Saved");
+      const warning = (state.data as { warning?: string | null } | undefined)?.warning;
+      if (warning) toast.warning(warning, { duration: 15_000 });
       onDone?.(state.data.id);
     }
   }, [state, onDone]);
