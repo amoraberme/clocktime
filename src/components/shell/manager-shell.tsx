@@ -46,77 +46,95 @@ export function ManagerShell({
   const router = useRouter();
 
   const sidebar = (
-    <nav className="flex h-full flex-col gap-1 p-3">
+    <nav className="flex h-full flex-col gap-1 p-3.5">
       <div className="mb-4 flex items-center justify-between px-2 pt-1">
         <Link href="/app" onClick={() => setOpen(false)}>
-          <Logo inverted />
+          <Logo />
         </Link>
         <button
-          className="text-sidebar-foreground rounded p-1 lg:hidden"
+          className="rounded-lg p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 lg:hidden"
           onClick={() => setOpen(false)}
           aria-label="Close menu"
         >
           <X className="size-5" />
         </button>
       </div>
-      {nav.map((item) => {
-        const Icon = NAV_ICONS[item.icon]!;
-        const active = item.href === "/app" ? pathname === "/app" : pathname.startsWith(item.href);
-        return (
-          <Link
-            key={item.href}
-            href={item.href} prefetch={true}
-            onClick={() => setOpen(false)}
-            className={cn(
-              "text-sidebar-foreground/80 hover:bg-sidebar-active/60 flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:text-white",
-              active && "bg-sidebar-active text-white",
-            )}
-          >
-            <Icon className="size-4" />
-            <span className="flex-1">{item.label}</span>
-            {item.locked ? <Lock className="size-3.5 opacity-60" /> : null}
-            {item.badge ? (
-              <span className="rounded-full bg-amber-400 px-1.5 text-[10px] font-semibold text-black">
-                {item.badge}
-              </span>
-            ) : null}
-          </Link>
-        );
-      })}
-      <div className="mt-auto space-y-1 border-t border-white/10 pt-3">
+      <div className="space-y-1">
+        {nav.map((item) => {
+          const Icon = NAV_ICONS[item.icon]!;
+          const active = item.href === "/app" ? pathname === "/app" : pathname.startsWith(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              prefetch={true}
+              onClick={() => setOpen(false)}
+              className={cn(
+                "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                active
+                  ? "bg-zinc-100 text-zinc-950 font-semibold"
+                  : "text-zinc-600 hover:bg-zinc-100/70 hover:text-zinc-950",
+              )}
+            >
+              <Icon
+                className={cn(
+                  "size-4 shrink-0 transition-colors",
+                  active ? "text-blue-600" : "text-zinc-500 group-hover:text-zinc-900",
+                )}
+              />
+              <span className="flex-1 truncate">{item.label}</span>
+              {item.locked ? <Lock className="size-3.5 text-zinc-400 opacity-70" /> : null}
+              {item.badge ? (
+                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                  {item.badge}
+                </span>
+              ) : null}
+            </Link>
+          );
+        })}
+      </div>
+      <div className="mt-auto space-y-1 border-t border-zinc-200/80 pt-3">
         <Link
           href="/me"
-          className="text-sidebar-foreground/80 hover:bg-sidebar-active/60 flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:text-white"
+          className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100/70 hover:text-zinc-950"
         >
-          <Smartphone className="size-4" /> My clock
+          <Smartphone className="size-4 text-zinc-500" /> My clock
         </Link>
       </div>
     </nav>
   );
 
   return (
-    <div className="flex min-h-dvh">
-      <aside className="bg-sidebar fixed inset-y-0 left-0 hidden w-60 lg:block">{sidebar}</aside>
+    <div className="flex min-h-dvh bg-zinc-50/50">
+      <aside className="fixed inset-y-0 left-0 hidden w-60 border-r border-zinc-200/80 bg-white lg:block">
+        {sidebar}
+      </aside>
       {open ? (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
-          <aside className="bg-sidebar absolute inset-y-0 left-0 w-64">{sidebar}</aside>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-xs" onClick={() => setOpen(false)} />
+          <aside className="absolute inset-y-0 left-0 w-64 border-r border-zinc-200/80 bg-white shadow-xl">
+            {sidebar}
+          </aside>
         </div>
       ) : null}
       <div className="flex min-w-0 flex-1 flex-col lg:pl-60">
-        <header className="bg-card/95 sticky top-0 z-30 flex h-14 items-center gap-3 border-b px-4 backdrop-blur">
-          <button className="rounded p-1 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-zinc-200/80 bg-white/95 px-4 backdrop-blur sm:px-6">
+          <button
+            className="rounded-lg p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 lg:hidden"
+            onClick={() => setOpen(true)}
+            aria-label="Open menu"
+          >
             <Menu className="size-5" />
           </button>
-          <div className="min-w-0 flex-1 truncate text-sm font-medium">
+          <div className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-900">
             {companyName}{" "}
-            <span className="bg-primary-soft text-primary ml-1 rounded px-1.5 py-0.5 text-xs">
+            <span className="ml-1.5 inline-flex items-center rounded-full border border-blue-200/70 bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
               {planLabel}
             </span>
           </div>
           <Dropdown>
-            <DropdownTrigger className="hover:bg-muted flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm">
-              <span className="bg-primary text-primary-foreground inline-flex size-7 items-center justify-center rounded-full text-xs font-semibold">
+            <DropdownTrigger className="flex cursor-pointer items-center gap-2 rounded-xl p-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
+              <span className="inline-flex size-7 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white shadow-xs">
                 {userName.charAt(0).toUpperCase()}
               </span>
               <span className="hidden max-w-40 truncate sm:inline">{userName}</span>
@@ -154,7 +172,7 @@ export function ManagerShell({
           </Dropdown>
         </header>
         {banner}
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">{children}</main>
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">{children}</main>
       </div>
     </div>
   );

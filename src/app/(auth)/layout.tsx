@@ -3,18 +3,18 @@ import { Logo } from "@/components/logo";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="from-primary-soft/60 to-background flex min-h-dvh flex-col items-center bg-gradient-to-b px-4 py-10">
-      <Link href="/" className="mb-8">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-zinc-50/60 px-4 py-12">
+      <Link href="/" className="mb-8 transition-opacity hover:opacity-90">
         <Logo />
       </Link>
       <div className="w-full max-w-md">{children}</div>
-      <p className="text-muted-foreground mt-8 text-center text-xs">
+      <p className="mt-8 text-center text-xs text-zinc-500">
         By continuing you agree to the{" "}
-        <Link className="underline" href="/legal/terms">
+        <Link className="font-medium text-zinc-700 underline underline-offset-4 hover:text-zinc-950" href="/legal/terms">
           Terms
         </Link>{" "}
         and{" "}
-        <Link className="underline" href="/legal/privacy">
+        <Link className="font-medium text-zinc-700 underline underline-offset-4 hover:text-zinc-950" href="/legal/privacy">
           Privacy Notice
         </Link>
         .

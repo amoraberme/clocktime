@@ -12,12 +12,12 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description ? <p className="text-muted-foreground mt-1 text-sm">{description}</p> : null}
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl">{title}</h1>
+        {description ? <p className="mt-1.5 text-sm text-zinc-500">{description}</p> : null}
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex flex-wrap items-center gap-2.5">{actions}</div> : null}
     </div>
   );
 }
@@ -34,12 +34,12 @@ export function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed px-6 py-12 text-center">
-      <div className="bg-primary-soft text-primary mb-3 rounded-full p-3">
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-white px-6 py-12 text-center">
+      <div className="mb-3 rounded-full bg-blue-50 p-3.5 text-blue-600">
         <Icon className="size-6" />
       </div>
-      <p className="font-medium">{title}</p>
-      {description ? <p className="text-muted-foreground mt-1 max-w-sm text-sm">{description}</p> : null}
+      <p className="font-semibold text-zinc-900">{title}</p>
+      {description ? <p className="mt-1 max-w-sm text-sm text-zinc-500">{description}</p> : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
   );
@@ -57,13 +57,13 @@ export function Stat({
   icon?: LucideIcon;
 }) {
   return (
-    <div className="bg-card rounded-lg border p-4">
-      <div className="text-muted-foreground flex items-center justify-between text-sm">
+    <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-xs transition-shadow">
+      <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wider text-zinc-500">
         <span>{label}</span>
-        {Icon ? <Icon className="size-4" /> : null}
+        {Icon ? <Icon className="size-4 text-zinc-400" /> : null}
       </div>
-      <div className="tabular mt-2 text-2xl font-semibold">{value}</div>
-      {hint ? <div className="text-muted-foreground mt-1 text-xs">{hint}</div> : null}
+      <div className="tabular mt-3 text-3xl font-bold tracking-tight text-zinc-900">{value}</div>
+      {hint ? <div className="mt-2 text-xs text-zinc-500">{hint}</div> : null}
     </div>
   );
 }
@@ -85,11 +85,11 @@ export function Avatar({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white",
+        "inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white shadow-2xs",
         s,
         className,
       )}
-      style={{ backgroundColor: color ?? "#0ea5e9" }}
+      style={{ backgroundColor: color ?? "#2563eb" }}
       aria-hidden
     >
       {initials(firstName, lastName)}
@@ -109,18 +109,18 @@ export function Alert({
   className?: string;
 }) {
   const styles = {
-    info: "bg-info-soft text-info border-info/20",
-    warning: "bg-warning-soft text-warning border-warning/20",
-    danger: "bg-danger-soft text-danger border-danger/20",
-    success: "bg-success-soft text-success border-success/20",
+    info: "bg-blue-50/80 text-blue-900 border-blue-200/60",
+    warning: "bg-amber-50/80 text-amber-900 border-amber-200/60",
+    danger: "bg-red-50/80 text-red-900 border-red-200/60",
+    success: "bg-emerald-50/80 text-emerald-900 border-emerald-200/60",
   }[tone];
   return (
     <div
-      className={cn("rounded-md border px-4 py-3 text-sm", styles, className)}
+      className={cn("rounded-xl border px-4 py-3 text-sm", styles, className)}
       role={tone === "danger" ? "alert" : "status"}
     >
-      {title ? <p className="font-medium">{title}</p> : null}
-      {children ? <div className={cn(title && "mt-1", "text-foreground/80")}>{children}</div> : null}
+      {title ? <p className="font-semibold">{title}</p> : null}
+      {children ? <div className={cn(title && "mt-1", "text-zinc-700")}>{children}</div> : null}
     </div>
   );
 }

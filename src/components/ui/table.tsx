@@ -8,23 +8,31 @@ export function Table({ className, ...props }: React.ComponentProps<"table">) {
     </div>
   );
 }
+
 export function THead({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
-      className={cn("bg-muted/50 text-muted-foreground border-b text-left text-xs uppercase", className)}
+      className={cn(
+        "border-b border-zinc-200/80 bg-zinc-50/80 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500",
+        className,
+      )}
       {...props}
     />
   );
 }
+
 export function TBody({ className, ...props }: React.ComponentProps<"tbody">) {
-  return <tbody className={cn("divide-y", className)} {...props} />;
+  return <tbody className={cn("divide-y divide-zinc-100", className)} {...props} />;
 }
+
 export function TR({ className, ...props }: React.ComponentProps<"tr">) {
-  return <tr className={cn("hover:bg-muted/30", className)} {...props} />;
+  return <tr className={cn("transition-colors hover:bg-zinc-50/70", className)} {...props} />;
 }
+
 export function TH({ className, ...props }: React.ComponentProps<"th">) {
-  return <th className={cn("px-4 py-2.5 font-medium whitespace-nowrap", className)} {...props} />;
+  return <th className={cn("whitespace-nowrap px-5 py-3 font-semibold text-zinc-500", className)} {...props} />;
 }
+
 export function TD({ className, ...props }: React.ComponentProps<"td">) {
-  return <td className={cn("px-4 py-3 align-middle", className)} {...props} />;
+  return <td className={cn("px-5 py-3.5 align-middle text-zinc-700", className)} {...props} />;
 }

@@ -2,14 +2,14 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const field =
-  "w-full rounded-md border border-input bg-card px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50";
+  "w-full rounded-xl border border-zinc-200 bg-white px-3.5 text-sm text-zinc-900 placeholder:text-zinc-400 shadow-2xs transition-colors focus:border-blue-500 focus:outline-none focus:ring-3 focus:ring-blue-500/15 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:opacity-60";
 
 export function Input({ className, ...props }: React.ComponentProps<"input">) {
   return <input className={cn(field, "h-10", className)} {...props} />;
 }
 
 export function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
-  return <textarea className={cn(field, "min-h-20 py-2", className)} {...props} />;
+  return <textarea className={cn(field, "min-h-24 py-2.5", className)} {...props} />;
 }
 
 export function Select({ className, children, ...props }: React.ComponentProps<"select">) {
@@ -21,7 +21,7 @@ export function Select({ className, children, ...props }: React.ComponentProps<"
 }
 
 export function Label({ className, ...props }: React.ComponentProps<"label">) {
-  return <label className={cn("text-sm font-medium", className)} {...props} />;
+  return <label className={cn("text-sm font-medium text-zinc-700", className)} {...props} />;
 }
 
 export function Field({
@@ -44,9 +44,9 @@ export function Field({
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
       {error ? (
-        <p className="text-danger text-xs">{error}</p>
+        <p className="text-xs font-medium text-red-600">{error}</p>
       ) : hint ? (
-        <p className="text-muted-foreground text-xs">{hint}</p>
+        <p className="text-xs text-zinc-500 leading-normal">{hint}</p>
       ) : null}
     </div>
   );
@@ -56,7 +56,10 @@ export function Checkbox({ className, ...props }: React.ComponentProps<"input">)
   return (
     <input
       type="checkbox"
-      className={cn("border-input accent-primary size-4 rounded", className)}
+      className={cn(
+        "size-4 rounded-md border-zinc-300 text-blue-600 accent-blue-600 focus:ring-2 focus:ring-blue-500/30",
+        className,
+      )}
       {...props}
     />
   );

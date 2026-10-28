@@ -24,18 +24,19 @@ export function SettingsNav({ isAdmin, hidden = [] }: { isAdmin: boolean; hidden
   const pathname = usePathname();
   const items = ITEMS.filter((i) => (isAdmin || i.hr) && !hidden.includes(i.href));
   return (
-    <nav className="-mx-1 mb-6 flex gap-1 overflow-x-auto border-b px-1">
+    <nav className="-mx-1 mb-8 flex gap-1 overflow-x-auto border-b border-zinc-200/80 px-1">
       {items.map((i) => {
         const active = i.href === "/app/settings" ? pathname === i.href : pathname.startsWith(i.href);
         return (
           <Link
             key={i.href}
             href={i.href}
+            prefetch={true}
             className={cn(
-              "border-b-2 px-3 py-2 text-sm whitespace-nowrap",
+              "-mb-px border-b-2 px-3.5 py-2.5 text-sm whitespace-nowrap transition-colors",
               active
-                ? "border-primary text-foreground font-medium"
-                : "text-muted-foreground hover:text-foreground border-transparent",
+                ? "border-blue-600 font-semibold text-zinc-950"
+                : "border-transparent font-medium text-zinc-500 hover:border-zinc-300 hover:text-zinc-800",
             )}
           >
             {i.label}

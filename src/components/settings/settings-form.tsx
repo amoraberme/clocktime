@@ -5,7 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { saveSettingsAction } from "@/app/app/settings/actions";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 
@@ -49,23 +49,22 @@ export function SettingsForm({
   const [busy, setBusy] = useState(false);
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form
-          className="space-y-5"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            const r = await saveSettingsAction(state);
-            setBusy(false);
-            if (r.ok) {
-              toast.success(r.message);
-              router.refresh();
-            } else toast.error(r.error);
-          }}
-        >
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          const r = await saveSettingsAction(state);
+          setBusy(false);
+          if (r.ok) {
+            toast.success(r.message);
+            router.refresh();
+          } else toast.error(r.error);
+        }}
+      >
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+        </CardHeader>
+        <CardContent>
           <div className="grid gap-5 sm:grid-cols-2">
             {fields.map((f) => {
               const id = `s-${f.key}`;
@@ -73,11 +72,11 @@ export function SettingsForm({
                 return (
                   <label
                     key={f.key}
-                    className="flex items-start justify-between gap-4 rounded-md border p-3 text-sm sm:col-span-2"
+                    className="flex items-start justify-between gap-4 rounded-xl border border-zinc-200/80 bg-zinc-50/40 p-4 text-sm sm:col-span-2 transition-colors hover:bg-zinc-50/80"
                   >
                     <span>
-                      <span className="font-medium">{f.label}</span>
-                      {f.hint ? <span className="text-muted-foreground block text-xs">{f.hint}</span> : null}
+                      <span className="font-semibold text-zinc-900">{f.label}</span>
+                      {f.hint ? <span className="mt-1 block text-xs text-zinc-500 leading-normal">{f.hint}</span> : null}
                     </span>
                     <Switch
                       checked={Boolean(state[f.key])}
@@ -111,38 +110,39 @@ export function SettingsForm({
                     <Input
                       id={id}
                       type="time"
-                      value={toHHMM(Number(state[f.key]))}
+                      value={toHHMM(Number(state[f.key] ?? 0))}
                       onChange={(e) => {
-                        const [h, m] = e.target.value.split(":").map(Number);
-                        setState({ ...state, [f.key]: (h ?? 0) * 60 + (m ?? 0) });
+                        const [h = "0", m = "0"] = e.target.value.split(":");
+                        setState({ ...state, [f.key]: Number(h) * 60 + Number(m) });
                       }}
                     />
                   </Field>
                 );
               }
               return (
-                <Field
-                  key={f.key}
-                  label={f.label + (f.suffix ? ` (${f.suffix})` : "")}
-                  hint={f.hint}
-                  htmlFor={id}
-                >
-                  <Input
-                    id={id}
-                    type="number"
-                    min={f.min}
-                    max={f.max}
-                    step={f.step ?? 1}
-                    value={String(state[f.key])}
-                    onChange={(e) => setState({ ...state, [f.key]: Number(e.target.value) })}
-                  />
+                <Field key={f.key} label={f.label} hint={f.hint} htmlFor={id}>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id={id}
+                      type="number"
+                      min={f.min}
+                      max={f.max}
+                      step={f.step}
+                      value={String(state[f.key] ?? "")}
+                      onChange={(e) => setState({ ...state, [f.key]: Number(e.target.value) })}
+                    />
+                    {f.suffix ? <span className="text-xs font-medium text-zinc-500">{f.suffix}</span> : null}
+                  </div>
                 </Field>
               );
             })}
           </div>
-          <Button disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
-        </form>
-      </CardContent>
+        </CardContent>
+        <CardFooter className="flex items-center justify-between">
+          <span className="text-xs text-zinc-500">Changes take effect immediately</span>
+          <Button disabled={busy} size="sm">Save changes</Button>
+        </CardFooter>
+      </form>
     </Card>
   );
 }

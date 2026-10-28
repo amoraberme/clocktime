@@ -13,7 +13,10 @@ export function DropdownContent({ className, ...props }: React.ComponentProps<ty
       <M.Content
         sideOffset={6}
         align="end"
-        className={cn("bg-card z-50 min-w-44 rounded-md border p-1 shadow-lg", className)}
+        className={cn(
+          "z-50 min-w-48 rounded-xl border border-zinc-200/80 bg-white p-1.5 text-zinc-900 shadow-lg",
+          className,
+        )}
         {...props}
       />
     </M.Portal>
@@ -24,7 +27,7 @@ export function DropdownItem({ className, ...props }: React.ComponentProps<typeo
   return (
     <M.Item
       className={cn(
-        "data-[highlighted]:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none [&_svg]:size-4",
+        "flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-zinc-700 outline-none select-none transition-colors data-[highlighted]:bg-zinc-100 data-[highlighted]:text-zinc-950 [&_svg]:size-4",
         className,
       )}
       {...props}
@@ -33,9 +36,11 @@ export function DropdownItem({ className, ...props }: React.ComponentProps<typeo
 }
 
 export function DropdownLabel({ className, ...props }: React.ComponentProps<typeof M.Label>) {
-  return <M.Label className={cn("text-muted-foreground px-2 py-1.5 text-xs", className)} {...props} />;
+  return (
+    <M.Label className={cn("px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-400", className)} {...props} />
+  );
 }
 
 export function DropdownSeparator() {
-  return <M.Separator className="bg-border my-1 h-px" />;
+  return <M.Separator className="my-1 h-px bg-zinc-100" />;
 }
