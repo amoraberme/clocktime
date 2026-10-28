@@ -4,6 +4,9 @@ import { actorFrom, writeAudit } from "@/server/audit";
 import { getContextOrThrow } from "@/server/context";
 import { auditFiltersFrom, auditWhere } from "@/server/queries/audit";
 
+// Nationwide workbooks for thousands of people take a while to build.
+export const maxDuration = 120;
+
 const MAX_ROWS = 50_000;
 
 /** The audit log as CSV, with the same filters as the page and each entry's chain hash. */

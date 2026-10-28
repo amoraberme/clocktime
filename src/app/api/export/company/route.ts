@@ -2,6 +2,9 @@ import { getContextOrThrow } from "@/server/context";
 import { decrypt } from "@/server/crypto";
 import { prisma } from "@/server/db";
 
+// Nationwide workbooks for thousands of people take a while to build.
+export const maxDuration = 120;
+
 /** Full JSON export of a company's data (Data Privacy Act portability). Owners and admins only. */
 export async function GET() {
   let ctx;

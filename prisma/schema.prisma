@@ -60,6 +60,7 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
   @@map("session")
 }
 
@@ -92,6 +93,7 @@ model Verification {
   updatedAt  DateTime @updatedAt
 
   @@index([identifier])
+  @@index([expiresAt])
   @@map("verification")
 }
 
@@ -577,6 +579,7 @@ model TimeEntry {
   @@unique([companyId, clientId])
   @@index([companyId, clockInAt])
   @@index([employeeId, clockInAt])
+  @@index([companyId, clockOutAt])
 }
 
 enum PunchAction {
@@ -636,6 +639,7 @@ model Punch {
   @@unique([companyId, clientId])
   @@index([employeeId, at])
   @@index([companyId, clientKey])
+  @@index([companyId, at])
 }
 
 model Break {
@@ -833,6 +837,7 @@ model LeaveRequest {
   createdAt    DateTime      @default(now())
 
   @@index([companyId, status])
+  @@index([employeeId, startDate])
 }
 
 model OvertimeRequest {
@@ -1012,6 +1017,7 @@ model TimeException {
 
   @@unique([companyId, dedupeKey])
   @@index([companyId, status])
+  @@index([employeeId, status])
 }
 
 enum TimesheetStatus {
@@ -1344,4 +1350,14 @@ model RateLimit {
   key     String   @id
   count   Int
   resetAt DateTime
+}
+
+/// Better Auth sign-in rate limits, shared by every server instance.
+model AuthRateLimit {
+  id          String @id
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+
+  @@map("authRateLimit")
 }

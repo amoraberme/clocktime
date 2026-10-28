@@ -61,7 +61,10 @@ async function raise(x: Raise) {
     });
     return true;
   } catch (err) {
-    if ((err as { code?: string }).code === "P2002") return false;
+    const code = (err as { code?: string }).code;
+    // P2002: already raised. P2003: a concurrent rebuild (e.g. the matching clock-out tap arriving
+    // at the same moment) re-paired and removed the entry, so the issue no longer applies.
+    if (code === "P2002" || code === "P2003") return false;
     throw err;
   }
 }

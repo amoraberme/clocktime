@@ -38,7 +38,8 @@ async function authenticate(req: Request, scope: ApiScope) {
   const plan = effectivePlan(row.company);
   if (!hasFeature(plan, "api")) throw new ApiError(403, "API access needs the Pro plan.");
   if (!row.scopes.includes(scope)) throw new ApiError(403, `This key lacks the "${scope}" scope.`);
-  const limit = await hit(`api:${row.id}`, 120, 60);
+  // Enterprise integrations replay whole shift-start rushes (1,000+ people) through one key.
+  const limit = await hit(`api:${row.id}`, plan === "ENTERPRISE" ? 1200 : 120, 60);
   if (!limit.ok) throw new ApiError(429, `Rate limit exceeded. Retry in ${limit.retryAfter}s.`);
   if (!row.lastUsedAt || Date.now() - row.lastUsedAt.getTime() > 60_000) {
     await prisma.apiKey.update({ where: { id: row.id }, data: { lastUsedAt: new Date() } });

@@ -3,6 +3,7 @@ import type {
   AttendanceDevice,
   Company,
   Location,
+  Prisma,
   PunchAction,
   PunchSource,
 } from "@/generated/prisma/client";
@@ -35,7 +36,11 @@ export async function touchTerminal(
   info: { pushVersion?: string | null; firmware?: string | null } = {},
 ) {
   const stale = !t.lastSeenAt || Date.now() - t.lastSeenAt.getTime() > 60_000;
-  if (!stale && t.lastIp === ip && !info.pushVersion && !info.firmware) return;
+  const changed =
+    (!!info.pushVersion && info.pushVersion !== t.pushVersion) ||
+    (!!info.firmware && info.firmware !== t.firmware);
+  // Terminals poll every 30 s all day: only write when something is worth recording.
+  if (!stale && t.lastIp === ip && !changed) return;
   await prisma.attendanceDevice.update({
     where: { id: t.id },
     data: {
@@ -74,20 +79,36 @@ export function tzOffsetHours(timezone: string) {
 
 type EmployeeRow = Awaited<ReturnType<typeof loadEmployees>>[number];
 
-async function loadEmployees(companyId: string) {
+async function loadEmployees(companyId: string, where: Prisma.EmployeeWhereInput = {}) {
   return prisma.employee.findMany({
-    where: { companyId, status: { not: "ARCHIVED" } },
+    where: { companyId, status: { not: "ARCHIVED" }, ...where },
     include: { locations: { select: { locationId: true } } },
   });
 }
 
 /** Terminal user ID → employee: the terminal ID set on the profile, else the employee number. */
-export async function employeeLookup(companyId: string) {
-  const all = await loadEmployees(companyId);
+function lookupFrom(all: EmployeeRow[]) {
   const map = new Map<string, EmployeeRow>();
   for (const e of all) if (!e.deviceUserId && e.employeeNo) map.set(normalizeUserId(e.employeeNo), e);
   for (const e of all) if (e.deviceUserId) map.set(normalizeUserId(e.deviceUserId), e);
   return (userId: string) => map.get(normalizeUserId(userId)) ?? null;
+}
+
+/**
+ * Map terminal user IDs to employees. Given the IDs in an upload, it loads only those people
+ * (terminals push every tap, so loading the whole company each time doesn't scale), falling back to
+ * the full list when an ID only matches after normalizing a stored employee number.
+ */
+export async function employeeLookup(companyId: string, userIds?: string[]) {
+  if (userIds?.length) {
+    const ids = [...new Set(userIds.map(normalizeUserId))];
+    const rows = await loadEmployees(companyId, {
+      OR: [{ deviceUserId: { in: ids } }, { employeeNo: { in: [...new Set([...ids, ...userIds])] } }],
+    });
+    const find = lookupFrom(rows);
+    if (ids.every((id) => find(id))) return find;
+  }
+  return lookupFrom(await loadEmployees(companyId));
 }
 
 export type IncomingRecord = {
@@ -122,7 +143,10 @@ export async function ingestTerminalRecords(
   opts: { dryRun?: boolean } = {},
 ): Promise<IngestResult> {
   const settings = parseSettings(company.settings);
-  const find = await employeeLookup(company.id);
+  const find = await employeeLookup(
+    company.id,
+    records.map((r) => r.userId),
+  );
   const result: IngestResult = {
     received: records.length,
     ingested: 0,
@@ -254,7 +278,8 @@ export async function ingestTerminalRecords(
         });
         return { ingested, duplicates, already, rebuilt };
       },
-      { timeout: 60_000 },
+      // Wait for a free connection during rushes instead of failing after Prisma's 2 s default.
+      { timeout: 60_000, maxWait: 15_000 },
     );
     result.ingested += outcome.ingested;
     result.duplicates += outcome.duplicates;

@@ -11,6 +11,9 @@ import { filtersFromParams } from "@/server/reports/report-params";
 import { buildAttendanceReport } from "@/server/services/attendance-report";
 import { currentPeriod } from "@/server/services/timesheets";
 
+// Nationwide workbooks for thousands of people take a while to build.
+export const maxDuration = 120;
+
 /** Cutoff attendance report: Excel workbook (all sheets) or one sheet as CSV. */
 export async function GET(req: Request) {
   let ctx;

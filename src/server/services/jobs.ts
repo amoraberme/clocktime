@@ -137,6 +137,8 @@ export async function shiftReminders(now = new Date()) {
 }
 
 /** Delete punch photos past each company's retention period, and old notifications. */
+const PHOTO_BATCH = 2_000;
+
 export async function cleanup(now = new Date()) {
   const companies = await prisma.company.findMany({ select: { id: true, settings: true } });
   let photos = 0;
@@ -145,6 +147,7 @@ export async function cleanup(now = new Date()) {
     const settings = parseSettings(c.settings);
     const days = settings.photoRetentionDays;
     const cutoff = new Date(now.getTime() - days * 86_400_000);
+    // Bounded per run so the job stays inside its time limit; the rest goes the next night.
     const entries = await prisma.timeEntry.findMany({
       where: {
         companyId: c.id,
@@ -152,27 +155,34 @@ export async function cleanup(now = new Date()) {
         OR: [{ inPhotoKey: { not: null } }, { outPhotoKey: { not: null } }],
       },
       select: { id: true, inPhotoKey: true, outPhotoKey: true },
+      take: PHOTO_BATCH,
     });
-    for (const e of entries) {
-      for (const key of [e.inPhotoKey, e.outPhotoKey])
-        if (key)
-          await storage()
-            .delete(key)
-            .catch(() => {});
-      await prisma.timeEntry.update({ where: { id: e.id }, data: { inPhotoKey: null, outPhotoKey: null } });
-      photos++;
-    }
     // The raw punch log keeps its own copy of the photo key.
     const punches = await prisma.punch.findMany({
       where: { companyId: c.id, at: { lt: cutoff }, photoKey: { not: null } },
       select: { id: true, photoKey: true },
+      take: PHOTO_BATCH,
     });
-    for (const p of punches) {
-      await storage()
-        .delete(p.photoKey!)
-        .catch(() => {});
-      photos++;
-    }
+    const keys = [
+      ...new Set([
+        ...entries.flatMap((e) => [e.inPhotoKey, e.outPhotoKey]),
+        ...punches.map((p) => p.photoKey),
+      ]),
+    ].filter((k): k is string => !!k);
+    for (let i = 0; i < keys.length; i += 20)
+      await Promise.all(
+        keys.slice(i, i + 20).map((key) =>
+          storage()
+            .delete(key)
+            .catch(() => {}),
+        ),
+      );
+    photos += keys.length;
+    if (entries.length)
+      await prisma.timeEntry.updateMany({
+        where: { id: { in: entries.map((e) => e.id) } },
+        data: { inPhotoKey: null, outPhotoKey: null },
+      });
     if (punches.length)
       await prisma.punch.updateMany({
         where: { id: { in: punches.map((p) => p.id) } },
@@ -199,6 +209,11 @@ export async function cleanup(now = new Date()) {
     where: { createdAt: { lt: new Date(now.getTime() - 90 * 86_400_000) } },
   });
   await prisma.rateLimit.deleteMany({ where: { resetAt: { lt: now } } });
+  await prisma.authRateLimit.deleteMany({
+    where: { lastRequest: { lt: BigInt(now.getTime() - 86_400_000) } },
+  });
+  await prisma.session.deleteMany({ where: { expiresAt: { lt: now } } });
+  await prisma.verification.deleteMany({ where: { expiresAt: { lt: now } } });
   return {
     photos,
     locations,

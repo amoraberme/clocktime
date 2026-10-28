@@ -502,7 +502,7 @@ export async function punch(actor: PunchActor, input: PunchInput): Promise<Punch
         return { error: err.message };
       }
     },
-    { timeout: 15_000 },
+    { timeout: 15_000, maxWait: 10_000 },
   );
   if ("error" in outcome) throw new UserError(outcome.error!);
   if ("rebuilt" in outcome && outcome.rebuilt)

@@ -5,6 +5,9 @@ import { actorFrom, writeAudit } from "@/server/audit";
 import { getContextOrThrow } from "@/server/context";
 import { currentPeriod, teamPeriodSummary } from "@/server/services/timesheets";
 
+// Nationwide workbooks for thousands of people take a while to build.
+export const maxDuration = 120;
+
 export async function GET(req: Request) {
   let ctx;
   try {

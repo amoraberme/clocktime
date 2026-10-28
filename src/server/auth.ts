@@ -45,6 +45,9 @@ export const auth = betterAuth({
     enabled: process.env.NODE_ENV === "production" && process.env.AUTH_RATE_LIMIT !== "off",
     window: 60,
     max: 30,
+    // Serverless instances don't share memory: keep the counters in Postgres.
+    storage: "database",
+    modelName: "authRateLimit",
   },
   plugins: [
     magicLink({

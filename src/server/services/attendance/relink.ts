@@ -33,7 +33,7 @@ export async function rebuildForSchedule(
           now,
         });
       },
-      { timeout: 15_000 },
+      { timeout: 15_000, maxWait: 10_000 },
     );
     await raiseRebuildIssues(company.id, employeeId, company.timezone, result);
   }
