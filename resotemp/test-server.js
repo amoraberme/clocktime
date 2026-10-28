@@ -70,6 +70,8 @@ async function runTests() {
     assert(rootRes.statusCode === 200, 'Root route / returns 200 OK');
     assert(rootRes.headers['content-type'].includes('text/html'), 'Root returns text/html');
     assert(rootRes.body.includes('ClockTime: Time clock'), 'Root contains ClockTime content');
+    assert(rootRes.body.includes('Live Attendance'), 'Root contains refactored Live Attendance tab');
+    assert(rootRes.body.includes('Spreadsheets'), 'Root contains refactored Spreadsheets comparison header');
     assert(rootRes.body.includes('__local_live_reload'), 'Root contains injected live reload script');
     assert(rootRes.body.includes('__offline_form_mock'), 'Root contains injected offline form mock');
 
@@ -83,7 +85,27 @@ async function runTests() {
     assert(subRes.statusCode === 200, 'Sub-route /features/revenue-attribution returns 200 OK');
     assert(subRes.body.includes('Philippine Payroll') || subRes.body.includes('DOLE'), 'Sub-route content served');
 
-    // 4. SSE live reload endpoint /__live_reload
+    // 4. Photorealistic Dashboard Assets in /dashboard/
+    for (const imgName of ['visitors.png', 'journey.png', 'funnels.png', 'realtime.png', 'settings.png']) {
+      const imgRes = await request(`/dashboard/${imgName}`);
+      assert(imgRes.statusCode === 200, `Asset /dashboard/${imgName} returns 200 OK`);
+      assert(imgRes.headers['content-type'].includes('image/png'), `/dashboard/${imgName} MIME type is image/png`);
+    }
+
+    // 5. Semantic Comparison Routes
+    const vsSpreadsheetsRes = await request('/vs/spreadsheets');
+    assert(vsSpreadsheetsRes.statusCode === 200, 'Route /vs/spreadsheets returns 200 OK');
+    assert(vsSpreadsheetsRes.body.includes('Manual Spreadsheets'), '/vs/spreadsheets has authentic content');
+
+    const vsBiometricsRes = await request('/vs/biometric-clocks');
+    assert(vsBiometricsRes.statusCode === 200, 'Route /vs/biometric-clocks returns 200 OK');
+    assert(vsBiometricsRes.body.includes('Biometric'), '/vs/biometric-clocks has authentic content');
+
+    const vsForeignRes = await request('/vs/foreign-apps');
+    assert(vsForeignRes.statusCode === 200, 'Route /vs/foreign-apps returns 200 OK');
+    assert(vsForeignRes.body.includes('Foreign'), '/vs/foreign-apps has authentic content');
+
+    // 6. SSE live reload endpoint /__live_reload
     const sseReq = http.request({
       hostname: '127.0.0.1',
       port: PORT,
@@ -101,7 +123,7 @@ async function runTests() {
     sseReq.end();
     await ssePromise;
 
-    // 5. Check CSS asset loading with correct MIME type
+    // 7. Check CSS asset loading with correct MIME type
     const cssFile = fs.readdirSync(path.join(__dirname, 'dist', '_next', 'static', 'chunks'))
       .find(f => f.endsWith('.css'));
     if (cssFile) {
@@ -110,7 +132,7 @@ async function runTests() {
       assert(cssRes.headers['content-type'].includes('text/css'), 'CSS MIME type is text/css');
     }
 
-    // 6. Test Range Request (HTTP 206 Partial Content)
+    // 8. Test Range Request (HTTP 206 Partial Content)
     if (cssFile) {
       const rangeRes = await request(`/_next/static/chunks/${cssFile}`, {
         Range: 'bytes=0-49'
@@ -121,7 +143,7 @@ async function runTests() {
       assert(rangeRes.headers['content-length'] === '50', 'Content-Length is 50 bytes');
     }
 
-    // 7. Non-existent route 404
+    // 9. Non-existent route 404
     const notFoundRes = await request('/non-existent-page-xyz');
     assert(notFoundRes.statusCode === 404, 'Non-existent route returns 404 Not Found');
 
