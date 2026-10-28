@@ -75,7 +75,7 @@ export function EmployeeShell({
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={item.href} prefetch={true}
                 className={cn(
                   "text-muted-foreground flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]",
                   active && "text-primary",

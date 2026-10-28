@@ -10,10 +10,12 @@ import { employeeScopeWhere } from "@/server/scope";
 
 export default async function ManagerLayout({ children }: { children: React.ReactNode }) {
   const ctx = await requireContext("MANAGER");
-  const pendingApprovals = ctx.can("approvals") ? await inboxCount(ctx) : 0;
-  const openExceptions = ctx.can("exceptions")
-    ? await ctx.db.timeException.count({ where: { status: "OPEN", employee: employeeScopeWhere(ctx) } })
-    : 0;
+  const [pendingApprovals, openExceptions] = await Promise.all([
+    ctx.can("approvals") ? inboxCount(ctx) : Promise.resolve(0),
+    ctx.can("exceptions")
+      ? ctx.db.timeException.count({ where: { status: "OPEN", employee: employeeScopeWhere(ctx) } })
+      : Promise.resolve(0),
+  ]);
   const nav = MANAGER_NAV.filter(
     (i) => (!i.minRole || (i.minRole === "HR" ? ctx.isHr : ctx.isAdmin)) && (!i.pay || ctx.canViewPay),
   ).map((i) => ({
