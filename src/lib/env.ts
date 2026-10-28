@@ -7,6 +7,7 @@ const schema = z
     DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).default(5),
     APP_URL: z.string().url().default("http://localhost:3000"),
     BETTER_AUTH_SECRET: z.string().min(32),
+    BETTER_AUTH_API_KEY: z.string().default(""),
     DATA_ENCRYPTION_KEY: z.string().min(1),
     CRON_SECRET: z.string().default(""),
     EMAIL_PROVIDER: z.enum(["console", "resend", "smtp"]).default("console"),

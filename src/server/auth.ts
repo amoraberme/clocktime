@@ -3,12 +3,20 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 import { magicLink, twoFactor } from "better-auth/plugins";
+import { dash } from "@better-auth/infra";
 import { prisma } from "./db";
 import { layout, sendEmail } from "./email";
 
 export const auth = betterAuth({
   appName: "ClockTime",
   baseURL: process.env.APP_URL ?? "http://localhost:3000",
+  trustedOrigins: [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    ...(process.env.APP_URL ? [process.env.APP_URL] : []),
+  ],
   secret: process.env.BETTER_AUTH_SECRET,
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   emailAndPassword: {
@@ -88,6 +96,7 @@ export const auth = betterAuth({
       skipVerificationOnEnable: false,
     }),
     nextCookies(),
+    dash(),
   ],
 });
 
