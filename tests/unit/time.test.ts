@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  localParts,
+  localPartsIntl,
   addDays,
   atMinute,
   dateKey,
@@ -80,5 +82,31 @@ describe("time helpers", () => {
     });
     expect(payPeriodFor("2026-10-29", "WEEKLY", opts).start).toBe("2026-10-26");
     expect(payPeriodFor("2026-10-29", "MONTHLY", opts).end).toBe("2026-10-31");
+  });
+});
+
+describe("fast local time conversion", () => {
+  it("matches Intl exactly across DST changes and odd offsets", () => {
+    const zones = [
+      "Asia/Manila",
+      "America/New_York",
+      "Europe/London",
+      "Asia/Kathmandu",
+      "Australia/Lord_Howe",
+      "America/St_Johns",
+      "Pacific/Chatham",
+      "UTC",
+    ];
+    // Every 7 minutes 13 seconds across 2024–2027 (covers each zone's transitions), plus the
+    // exact minutes around New York's 2026 DST changes.
+    const instants: Date[] = [];
+    for (let t = Date.UTC(2024, 0, 1); t < Date.UTC(2027, 11, 31); t += 433_000 * 37)
+      instants.push(new Date(t));
+    for (const edge of [Date.UTC(2026, 2, 8, 7), Date.UTC(2026, 10, 1, 6)])
+      for (let m = -3; m <= 3; m++)
+        instants.push(new Date(edge + m * 60_000 + 59_999), new Date(edge + m * 60_000));
+    for (const tz of zones)
+      for (const d of instants)
+        expect(localParts(d, tz), `${tz} ${d.toISOString()}`).toEqual(localPartsIntl(d, tz));
   });
 });

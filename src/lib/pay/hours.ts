@@ -16,7 +16,7 @@
  *   into a holiday earns holiday rates only for the holiday hours.
  */
 import type { CompanySettings } from "../settings";
-import { dateKey, minuteOfDay, minutesBetween, roundInstant, weekday } from "../time";
+import { dateKey, minutesBetween, roundInstant, tzOffsetMs, weekday } from "../time";
 import { classifyDay, type DayType, type HolidayKind } from "./premiums";
 
 export type BreakInput = { startAt: Date; endAt: Date | null; paid: boolean };
@@ -233,11 +233,21 @@ export function computeHours(entries: EntryInput[], ctx: HoursContext): HoursRes
     day.lateMinutes += lateMinutes;
     day.undertimeMinutes += undertimeMinutes;
 
+    // The local date (and so the day type) can only change on a 15-minute UTC boundary.
+    let block = NaN;
+    let calKey = "";
+    let dayType: DayType = "ORDINARY";
+    let offset = 0;
     for (const [a, b] of intervals) {
       for (let t = a; t + 60000 <= b; t += 60000) {
         const instant = new Date(t);
-        const calKey = dateKey(instant, ctx.timezone);
-        const dayType = dayTypeFor(calKey, ctx);
+        if (Math.floor(t / 900_000) !== block) {
+          block = Math.floor(t / 900_000);
+          calKey = dateKey(instant, ctx.timezone);
+          dayType = dayTypeFor(calKey, ctx);
+          offset = tzOffsetMs(instant, ctx.timezone);
+        }
+        const localMinute = Math.floor((t + offset) / 60_000) % 1440;
         minutesByCalendarDate[calKey] = (minutesByCalendarDate[calKey] ?? 0) + 1;
         // Each 24 hours of a long duty is a new workday with its own regular hours. Time past a
         // scheduled duty's end stays on its last workday, so an overstay is overtime (needing approval).
@@ -249,7 +259,7 @@ export function computeHours(entries: EntryInput[], ctx: HoursContext): HoursRes
         const used = regularUsed.get(segDate) ?? 0;
         const ot = used >= s.dailyRegularMinutes;
         if (!ot) regularUsed.set(segDate, used + 1);
-        const nd = isNight(minuteOfDay(instant, ctx.timezone), s.nightDiffStartMinute, s.nightDiffEndMinute);
+        const nd = isNight(localMinute, s.nightDiffStartMinute, s.nightDiffEndMinute);
         const key: BucketKey = `${dayType}|${ot ? "OT" : "REG"}|${nd ? "ND" : "DAY"}`;
         buckets[key] = (buckets[key] ?? 0) + 1;
         segDay.buckets[key] = (segDay.buckets[key] ?? 0) + 1;

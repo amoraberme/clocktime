@@ -8,7 +8,7 @@ import {
   type ReportSheet,
 } from "@/server/reports/attendance-workbook";
 import { filtersFromParams } from "@/server/reports/report-params";
-import { buildAttendanceReport } from "@/server/services/attendance-report";
+import { cachedAttendanceReport } from "@/server/services/attendance-report";
 import { currentPeriod } from "@/server/services/timesheets";
 
 // Nationwide workbooks for thousands of people take a while to build.
@@ -34,7 +34,7 @@ export async function GET(req: Request) {
         status: 403,
       });
   }
-  const report = await buildAttendanceReport(ctx, period, filters);
+  const report = await cachedAttendanceReport(ctx, period, filters);
   const format = url.searchParams.get("format") ?? "xlsx";
   await writeAudit(actorFrom(ctx), {
     action: "attendance.export",

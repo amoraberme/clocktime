@@ -1,4 +1,5 @@
 import "server-only";
+import { groupBy, yieldEvery } from "@/lib/utils";
 import type { Prisma } from "@/generated/prisma/client";
 import { dailyRate } from "@/lib/pay/gross";
 import {
@@ -153,102 +154,116 @@ export async function computePayRun(ctx: AppContext, runId: string) {
     ctx.db.loan.findMany({ where: { status: "ACTIVE", startDate: { lte: bounds.lte } } }),
   ]);
   let totals = { gross: 0, net: 0, employeeContributions: 0, employerContributions: 0, tax: 0, employees: 0 };
-  await prisma.$transaction(async (tx) => {
-    await tx.payRunItem.deleteMany({ where: { payRunId: run.id } });
-    for (const emp of employees) {
-      const own = entries.filter((e) => e.employeeId === emp.id && e.clockOutAt);
-      const g = computeEmployeePeriod(ctx, emp, own, period, inputs);
-      const adj = adjustments.filter((a) => a.employeeId === emp.id);
-      if (g.gross.gross === 0 && adj.length === 0 && emp.status === "ARCHIVED") continue;
-      if (g.gross.gross === 0 && adj.length === 0 && own.length === 0 && emp.payType !== "MONTHLY") continue;
-      const before = mtd.get(emp.id);
-      const slip = computePayslip({
-        frequency: ctx.company.payFrequency,
-        cutoffIndex: run.cutoffIndex,
-        contributionSchedule: ctx.settings.contributionSchedule,
-        grossLines: g.gross.lines,
-        gross: g.gross.gross,
-        basic: g.gross.basic,
-        monthlyBasic: monthlyBasicFromRate(
-          emp.payType,
-          emp.rateCentavos,
-          emp.workDaysPerYear,
-          ctx.settings.dailyRegularMinutes,
-        ),
-        isMinimumWageEarner: emp.isMinimumWageEarner,
-        adjustments: adj.map((a) => ({
-          kind: a.kind,
-          label: a.label,
-          amount: a.amountCentavos,
-          taxable: a.taxable,
-        })),
-        loans: loans
-          .filter((l) => l.employeeId === emp.id)
-          .map((l) => ({
-            id: l.id,
-            label: l.label,
-            amortization: l.amortizationCentavos,
-            balance: l.balanceCentavos,
-          })),
-        monthGrossBefore: before?.gross ?? 0,
-        monthContributionsBefore: before?.c ?? ZERO_CONTRIBUTIONS,
-        tables,
-      });
-      const warnings = [...slip.warnings];
-      if (g.gross.unapprovedOvertimeMinutes)
-        warnings.push(
-          `${Math.round(g.gross.unapprovedOvertimeMinutes / 6) / 10}h overtime not approved (unpaid).`,
-        );
-      if (!emp.sssEnc || !emp.philhealthEnc || !emp.pagibigEnc || !emp.tinEnc)
-        warnings.push("Missing government ID numbers.");
-      await tx.payRunItem.create({
-        data: {
-          payRunId: run.id,
-          companyId: ctx.company.id,
-          employeeId: emp.id,
-          minutes: json(g.hours.totals),
-          earnings: json(slip.earnings),
-          deductions: json(slip.deductions),
-          grossCentavos: slip.gross,
-          basicCentavos: slip.basic,
-          sssEe: slip.contributions.sssEe,
-          sssEr: slip.contributions.sssEr,
-          sssEc: slip.contributions.sssEc,
-          philhealthEe: slip.contributions.philhealthEe,
-          philhealthEr: slip.contributions.philhealthEr,
-          pagibigEe: slip.contributions.pagibigEe,
-          pagibigEr: slip.contributions.pagibigEr,
-          taxableCentavos: slip.taxable,
-          withholdingTax: slip.withholdingTax,
-          otherDeductions: slip.otherDeductions,
-          netCentavos: slip.net,
-          tableVersions: versions,
-          warnings,
-        },
-      });
-      totals = {
-        gross: totals.gross + slip.gross,
-        net: totals.net + slip.net,
-        employeeContributions:
-          totals.employeeContributions +
-          slip.contributions.sssEe +
-          slip.contributions.philhealthEe +
-          slip.contributions.pagibigEe,
-        employerContributions:
-          totals.employerContributions +
-          slip.contributions.sssEr +
-          slip.contributions.sssEc +
-          slip.contributions.philhealthEr +
-          slip.contributions.pagibigEr,
-        tax: totals.tax + slip.withholdingTax,
-        employees: totals.employees + 1,
-      };
-    }
-    await tx.payRun.update({
-      where: { id: run.id },
-      data: { status: "COMPUTED", computedAt: new Date(), totals },
+  // Compute every payslip first (CPU only), then write them in one short transaction: holding a
+  // transaction open while computing 1,000+ payslips outlasts its time limit.
+  const byEmployee = new Map<string, typeof entries>();
+  for (const e of entries) {
+    if (!e.clockOutAt) continue;
+    const list = byEmployee.get(e.employeeId);
+    if (list) list.push(e);
+    else byEmployee.set(e.employeeId, [e]);
+  }
+  const adjustmentsBy = groupBy(adjustments, (a) => a.employeeId);
+  const loansBy = groupBy(loans, (l) => l.employeeId);
+  const items: Prisma.PayRunItemCreateManyInput[] = [];
+  for (const [i, emp] of employees.entries()) {
+    await yieldEvery(i);
+    const own = byEmployee.get(emp.id) ?? [];
+    const g = computeEmployeePeriod(ctx, emp, own, period, inputs);
+    const adj = adjustmentsBy.get(emp.id) ?? [];
+    if (g.gross.gross === 0 && adj.length === 0 && emp.status === "ARCHIVED") continue;
+    if (g.gross.gross === 0 && adj.length === 0 && own.length === 0 && emp.payType !== "MONTHLY") continue;
+    const before = mtd.get(emp.id);
+    const slip = computePayslip({
+      frequency: ctx.company.payFrequency,
+      cutoffIndex: run.cutoffIndex,
+      contributionSchedule: ctx.settings.contributionSchedule,
+      grossLines: g.gross.lines,
+      gross: g.gross.gross,
+      basic: g.gross.basic,
+      monthlyBasic: monthlyBasicFromRate(
+        emp.payType,
+        emp.rateCentavos,
+        emp.workDaysPerYear,
+        ctx.settings.dailyRegularMinutes,
+      ),
+      isMinimumWageEarner: emp.isMinimumWageEarner,
+      adjustments: adj.map((a) => ({
+        kind: a.kind,
+        label: a.label,
+        amount: a.amountCentavos,
+        taxable: a.taxable,
+      })),
+      loans: (loansBy.get(emp.id) ?? []).map((l) => ({
+        id: l.id,
+        label: l.label,
+        amortization: l.amortizationCentavos,
+        balance: l.balanceCentavos,
+      })),
+      monthGrossBefore: before?.gross ?? 0,
+      monthContributionsBefore: before?.c ?? ZERO_CONTRIBUTIONS,
+      tables,
     });
-  });
+    const warnings = [...slip.warnings];
+    if (g.gross.unapprovedOvertimeMinutes)
+      warnings.push(
+        `${Math.round(g.gross.unapprovedOvertimeMinutes / 6) / 10}h overtime not approved (unpaid).`,
+      );
+    if (!emp.sssEnc || !emp.philhealthEnc || !emp.pagibigEnc || !emp.tinEnc)
+      warnings.push("Missing government ID numbers.");
+    items.push({
+      payRunId: run.id,
+      companyId: ctx.company.id,
+      employeeId: emp.id,
+      minutes: json(g.hours.totals),
+      earnings: json(slip.earnings),
+      deductions: json(slip.deductions),
+      grossCentavos: slip.gross,
+      basicCentavos: slip.basic,
+      sssEe: slip.contributions.sssEe,
+      sssEr: slip.contributions.sssEr,
+      sssEc: slip.contributions.sssEc,
+      philhealthEe: slip.contributions.philhealthEe,
+      philhealthEr: slip.contributions.philhealthEr,
+      pagibigEe: slip.contributions.pagibigEe,
+      pagibigEr: slip.contributions.pagibigEr,
+      taxableCentavos: slip.taxable,
+      withholdingTax: slip.withholdingTax,
+      otherDeductions: slip.otherDeductions,
+      netCentavos: slip.net,
+      tableVersions: versions,
+      warnings,
+    });
+    totals = {
+      gross: totals.gross + slip.gross,
+      net: totals.net + slip.net,
+      employeeContributions:
+        totals.employeeContributions +
+        slip.contributions.sssEe +
+        slip.contributions.philhealthEe +
+        slip.contributions.pagibigEe,
+      employerContributions:
+        totals.employerContributions +
+        slip.contributions.sssEr +
+        slip.contributions.sssEc +
+        slip.contributions.philhealthEr +
+        slip.contributions.pagibigEr,
+      tax: totals.tax + slip.withholdingTax,
+      employees: totals.employees + 1,
+    };
+  }
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.payRunItem.deleteMany({ where: { payRunId: run.id } });
+      for (let i = 0; i < items.length; i += 500)
+        await tx.payRunItem.createMany({ data: items.slice(i, i + 500) });
+      await tx.payRun.update({
+        where: { id: run.id },
+        data: { status: "COMPUTED", computedAt: new Date(), totals },
+      });
+    },
+    { timeout: 60_000, maxWait: 15_000 },
+  );
   return totals;
 }
 

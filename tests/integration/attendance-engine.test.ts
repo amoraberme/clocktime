@@ -42,6 +42,25 @@ async function setup() {
 }
 
 describe("attendance engine", () => {
+  it("keeps working for someone with an old missed clock-out", async () => {
+    // A lone tap 10 days ago stays an open entry for HR. Later duties are closed. Punching now must
+    // not drag the rebuild back to that old entry and re-create the duties in between.
+    const t = await setup();
+    await t.tap(ago(240));
+    await t.tap(ago(200));
+    await t.tap(ago(192));
+    await t.tap(ago(100));
+    await t.tap(ago(92));
+    const before = await t.entries();
+    expect(before.map((e) => !!e.clockOutAt)).toEqual([false, true, true]);
+    await punch(t.actor, { action: "CLOCK_IN", source: "MOBILE", method: "GPS" });
+    const after = await t.entries();
+    expect(after).toHaveLength(4);
+    expect(after.slice(0, 3).map((e) => e.id)).toEqual(before.map((e) => e.id));
+    expect(after[0]!.clockOutAt).toBeNull();
+    expect(after[3]!.clockOutAt).toBeNull();
+  });
+
   it("pairs fingerprint taps against the schedule", async () => {
     const t = await setup();
     const s = await t.shift(ago(30), ago(21));

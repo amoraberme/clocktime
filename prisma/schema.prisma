@@ -371,6 +371,7 @@ model Employee {
   @@unique([companyId, deviceUserId])
   @@unique([companyId, cardLookup])
   @@index([companyId, status])
+  @@index([userId])
 }
 
 /// Locations an employee works at. For managers, also the locations they manage (empty = all).
@@ -381,6 +382,7 @@ model EmployeeLocation {
   location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
   @@id([employeeId, locationId])
+  @@index([locationId])
 }
 
 model Invitation {
@@ -580,6 +582,7 @@ model TimeEntry {
   @@index([companyId, clockInAt])
   @@index([employeeId, clockInAt])
   @@index([companyId, clockOutAt])
+  @@index([shiftId])
 }
 
 enum PunchAction {
@@ -650,6 +653,8 @@ model Break {
   endAt       DateTime?
   paid        Boolean   @default(false)
   clientId    String?   @unique
+
+  @@index([timeEntryId])
 }
 
 // ───────────────────────────── Scheduling ─────────────────────────────
@@ -691,6 +696,8 @@ model Shift {
 
   @@index([companyId, startAt])
   @@index([employeeId, startAt])
+  @@index([locationId, startAt])
+  @@index([recurrenceId])
 }
 
 model ShiftRecurrence {
@@ -750,6 +757,8 @@ model ShiftSwapRequest {
   createdAt        DateTime   @default(now())
 
   @@index([companyId, status])
+  @@index([shiftId])
+  @@index([targetShiftId])
 }
 
 model OpenShiftClaim {
@@ -856,6 +865,7 @@ model OvertimeRequest {
   createdAt    DateTime      @default(now())
 
   @@index([companyId, date])
+  @@index([employeeId, date])
 }
 
 enum ScheduleChangeKind {
@@ -891,6 +901,8 @@ model ScheduleChangeRequest {
   createdAt       DateTime           @default(now())
 
   @@index([companyId, status])
+  @@index([employeeId])
+  @@index([shiftId])
 }
 
 enum CorrectionKind {
@@ -925,6 +937,7 @@ model AttendanceCorrectionRequest {
   createdAt    DateTime       @default(now())
 
   @@index([companyId, status])
+  @@index([employeeId])
 }
 
 /// Each approve/decline decision on a request, level by level (the approval trail).
@@ -1018,6 +1031,8 @@ model TimeException {
   @@unique([companyId, dedupeKey])
   @@index([companyId, status])
   @@index([employeeId, status])
+  @@index([timeEntryId])
+  @@index([shiftId])
 }
 
 enum TimesheetStatus {
@@ -1142,6 +1157,8 @@ model PayAdjustment {
   createdAt      DateTime       @default(now())
 
   @@index([companyId, employeeId])
+  @@index([payRunId])
+  @@index([employeeId])
 }
 
 enum LoanStatus {
@@ -1163,6 +1180,8 @@ model Loan {
   startDate            DateTime   @db.Date
   status               LoanStatus @default(ACTIVE)
   createdAt            DateTime   @default(now())
+
+  @@index([employeeId])
 }
 
 enum StatutoryKind {
@@ -1238,6 +1257,8 @@ model PushSubscription {
   p256dh    String
   auth      String
   createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 enum BillingInterval {

@@ -44,26 +44,38 @@ export async function rebuildAttendance(tx: Tx, input: RebuildInput): Promise<Re
   let from = new Date(input.from.getTime() - maxDuty);
   let to = new Date(input.to.getTime() + maxDuty);
 
-  const overlapping = await tx.timeEntry.findMany({
-    where: {
-      companyId,
-      employeeId,
-      clockInAt: { lt: to },
-      OR: [{ clockOutAt: null }, { clockOutAt: { gt: from } }],
-    },
-    select: {
-      id: true,
-      clockInAt: true,
-      clockOutAt: true,
-      status: true,
-      manualOverride: true,
-      inPunchId: true,
-      outPunchId: true,
-    },
-  });
-  for (const e of overlapping) {
-    if (e.clockInAt < from) from = e.clockInAt;
-    if (e.clockOutAt && e.clockOutAt > to) to = e.clockOutAt;
+  const entrySelect = {
+    id: true,
+    clockInAt: true,
+    clockOutAt: true,
+    status: true,
+    manualOverride: true,
+    inPunchId: true,
+    outPunchId: true,
+  } as const;
+  // Entries overlapping the window. An open entry only counts while it could still be the current
+  // duty: a missed clock-out from weeks ago stays open for HR and mustn't drag the window back to it.
+  // Widening the window can reach more entries, so repeat until it stops growing.
+  let overlapping: Prisma.TimeEntryGetPayload<{ select: typeof entrySelect }>[] = [];
+  for (let round = 0; round < 6; round++) {
+    overlapping = await tx.timeEntry.findMany({
+      where: {
+        companyId,
+        employeeId,
+        clockInAt: { lt: to },
+        OR: [
+          { clockOutAt: { gt: from } },
+          { clockOutAt: null, clockInAt: { gte: new Date(from.getTime() - maxDuty) } },
+        ],
+      },
+      select: entrySelect,
+    });
+    let widened = false;
+    for (const e of overlapping) {
+      if (e.clockInAt < from) [from, widened] = [e.clockInAt, true];
+      if (e.clockOutAt && e.clockOutAt > to) [to, widened] = [e.clockOutAt, true];
+    }
+    if (!widened) break;
   }
   for (const e of overlapping) {
     if (!e.inPunchId && e.status !== "APPROVED" && e.status !== "LOCKED" && !e.manualOverride) {
@@ -72,11 +84,6 @@ export async function rebuildAttendance(tx: Tx, input: RebuildInput): Promise<Re
       e.outPunchId = ids.outPunchId;
     }
   }
-  const isFixed = (e: (typeof overlapping)[number]) =>
-    e.status === "APPROVED" || e.status === "LOCKED" || e.manualOverride || !e.inPunchId;
-  const fixed = overlapping.filter(isFixed);
-  const derived = overlapping.filter((e) => !isFixed(e));
-  const fixedIds = new Set(fixed.map((e) => e.id));
 
   const [allPunches, shifts, lockedRuns] = await Promise.all([
     tx.punch.findMany({
@@ -112,6 +119,27 @@ export async function rebuildAttendance(tx: Tx, input: RebuildInput): Promise<Re
     }),
   ]);
 
+  // Any other entry already holding a punch in the window lies mostly outside it (e.g. a duty
+  // whose clock-out is past the window): leave it as it is, like an approved one.
+  const knownIds = new Set(overlapping.map((e) => e.id));
+  const punchIds = allPunches.map((p) => p.id);
+  const outside = punchIds.length
+    ? await tx.timeEntry.findMany({
+        where: {
+          companyId,
+          employeeId,
+          id: { notIn: [...knownIds] },
+          OR: [{ inPunchId: { in: punchIds } }, { outPunchId: { in: punchIds } }],
+        },
+        select: entrySelect,
+      })
+    : [];
+  const isFixed = (e: (typeof overlapping)[number]) =>
+    e.status === "APPROVED" || e.status === "LOCKED" || e.manualOverride || !e.inPunchId;
+  const fixed = [...overlapping.filter(isFixed), ...outside];
+  const derived = overlapping.filter((e) => !isFixed(e));
+  const fixedIds = new Set(fixed.map((e) => e.id));
+
   const insideFixed = (p: Punch) =>
     (p.timeEntryId && fixedIds.has(p.timeEntryId)) ||
     fixed.some((e) => p.at >= e.clockInAt && p.at <= (e.clockOutAt ?? e.clockInAt));
@@ -143,16 +171,30 @@ export async function rebuildAttendance(tx: Tx, input: RebuildInput): Promise<Re
     input.now,
   );
 
-  // Out-punch links are unique; clear them first so entries can trade punches without conflicts.
-  const keep = new Set(paired.entries.map((e) => e.inPunchId));
+  const keep = new Map(paired.entries.map((e) => [e.inPunchId, e]));
   const stale = derived.filter((e) => !keep.has(e.inPunchId!));
   if (stale.length) await tx.timeEntry.deleteMany({ where: { id: { in: stale.map((e) => e.id) } } });
   const reused = derived.filter((e) => keep.has(e.inPunchId!));
-  if (reused.length)
+  // Out-punch links are unique: clear the ones that move to another entry first, so entries can
+  // trade punches without conflicts. Entries keeping their clock-out aren't touched.
+  const moving = reused.filter((e) => e.outPunchId !== keep.get(e.inPunchId!)!.outPunchId);
+  if (moving.length)
     await tx.timeEntry.updateMany({
-      where: { id: { in: reused.map((e) => e.id) } },
+      where: { id: { in: moving.map((e) => e.id) } },
       data: { outPunchId: null },
     });
+  const movingIds = new Set(moving.map((e) => e.id));
+  // Current rows, to skip rewriting entries the rebuild leaves as they were: a punch re-pairs a
+  // window of several duties, and rewriting each one (and its breaks) on every tap adds up.
+  const current = new Map(
+    (reused.length
+      ? await tx.timeEntry.findMany({
+          where: { id: { in: reused.map((e) => e.id) } },
+          include: { breaks: { orderBy: { startAt: "asc" } } },
+        })
+      : []
+    ).map((e) => [e.id, e]),
+  );
 
   const entryByPunch = new Map<string, string>();
   const entryIds: string[] = [];
@@ -193,20 +235,21 @@ export async function rebuildAttendance(tx: Tx, input: RebuildInput): Promise<Re
       status: pe.outAt ? ("CLOSED" as const) : ("OPEN" as const),
     };
     const existing = reused.find((e) => e.inPunchId === pe.inPunchId);
+    const breaks = pe.breaks.map((b) => ({ startAt: b.startAt, endAt: b.endAt ?? pe.outAt, paid: false }));
+    const before = existing ? current.get(existing.id) : undefined;
+    const unchanged =
+      !!before && !movingIds.has(before.id) && sameFields(before, data) && sameBreaks(before.breaks, breaks);
     const entry = existing
-      ? await tx.timeEntry.update({ where: { id: existing.id }, data, select: { id: true } })
+      ? unchanged
+        ? { id: existing.id }
+        : await tx.timeEntry.update({ where: { id: existing.id }, data, select: { id: true } })
       : await tx.timeEntry.create({ data: { ...data, companyId, employeeId }, select: { id: true } });
-    await tx.break.deleteMany({ where: { timeEntryId: entry.id } });
-    if (pe.breaks.length)
-      await tx.break.createMany({
-        data: pe.breaks.map((b) => ({
-          timeEntryId: entry.id,
-          startAt: b.startAt,
-          endAt: b.endAt ?? pe.outAt,
-          paid: false,
-        })),
-      });
-    entryIds.push(entry.id);
+    if (!unchanged) {
+      if (existing && before?.breaks.length) await tx.break.deleteMany({ where: { timeEntryId: entry.id } });
+      if (breaks.length)
+        await tx.break.createMany({ data: breaks.map((b) => ({ ...b, timeEntryId: entry.id })) });
+      entryIds.push(entry.id);
+    }
     const linked = [pe.inPunchId, pe.outPunchId, ...pe.breaks.flatMap((b) => [b.startPunchId, b.endPunchId])];
     for (const id of linked) if (id) entryByPunch.set(id, entry.id);
     if (pe.flags.includes("MISSING_OUT")) missingOut.push({ entryId: entry.id, at: pe.inAt });
@@ -241,6 +284,36 @@ export async function rebuildAttendance(tx: Tx, input: RebuildInput): Promise<Re
     orphans: paired.orphans,
     lockedPunches,
   };
+}
+
+type Comparable = Date | string | number | boolean | null | undefined | string[];
+
+function sameValue(a: Comparable, b: Comparable) {
+  if (a instanceof Date || b instanceof Date)
+    return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+  if (Array.isArray(a) || Array.isArray(b))
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]);
+  return (a ?? null) === (b ?? null);
+}
+
+/** Whether a stored entry already has every value the rebuild would write. */
+function sameFields(row: Record<string, unknown>, data: Record<string, unknown>) {
+  return Object.entries(data).every(([k, v]) => sameValue(row[k] as Comparable, v as Comparable));
+}
+
+function sameBreaks(
+  rows: { startAt: Date; endAt: Date | null; paid: boolean }[],
+  next: { startAt: Date; endAt: Date | null; paid: boolean }[],
+) {
+  return (
+    rows.length === next.length &&
+    rows.every(
+      (r, i) =>
+        sameValue(r.startAt, next[i]!.startAt) &&
+        sameValue(r.endAt, next[i]!.endAt) &&
+        r.paid === next[i]!.paid,
+    )
+  );
 }
 
 /**

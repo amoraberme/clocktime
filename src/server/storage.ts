@@ -44,17 +44,28 @@ class LocalStorage implements Storage {
   }
 }
 
+function s3Client(endpoint: string | undefined) {
+  return new S3Client({
+    region: process.env.S3_REGION || "auto",
+    // Self-hosted S3 (the local production copy) needs bucket-in-path URLs; R2 and S3 accept either.
+    forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
+    endpoint: endpoint || undefined,
+    credentials: {
+      accessKeyId: process.env.S3_ACCESS_KEY_ID ?? "",
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
+    },
+  });
+}
+
 class S3Storage implements Storage {
   private client: S3Client;
+  /** Signs download links for browsers when the server reaches storage at an internal address. */
+  private publicClient: S3Client;
   constructor(private bucket: string) {
-    this.client = new S3Client({
-      region: process.env.S3_REGION || "auto",
-      endpoint: process.env.S3_ENDPOINT || undefined,
-      credentials: {
-        accessKeyId: process.env.S3_ACCESS_KEY_ID ?? "",
-        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
-      },
-    });
+    this.client = s3Client(process.env.S3_ENDPOINT);
+    this.publicClient = process.env.S3_PUBLIC_ENDPOINT
+      ? s3Client(process.env.S3_PUBLIC_ENDPOINT)
+      : this.client;
   }
   async put(key: string, body: Buffer, contentType: string) {
     assertKey(key);
@@ -77,7 +88,7 @@ class S3Storage implements Storage {
   }
   async url(key: string) {
     assertKey(key);
-    return getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: key }), {
+    return getSignedUrl(this.publicClient, new GetObjectCommand({ Bucket: this.bucket, Key: key }), {
       expiresIn: 300,
     });
   }

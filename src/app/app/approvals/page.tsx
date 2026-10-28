@@ -10,7 +10,13 @@ import { EmptyState, PageHeader } from "@/components/ui/misc";
 import { formatDateTime } from "@/lib/time";
 import { fullName } from "@/lib/utils";
 import { requireContext } from "@/server/context";
-import { approvalInbox, INBOX_LABELS, type InboxType } from "@/server/queries/approvals";
+import {
+  approvalInbox,
+  INBOX_LABELS,
+  INBOX_LIMIT,
+  inboxTotals,
+  type InboxType,
+} from "@/server/queries/approvals";
 
 export const metadata: Metadata = { title: "Approvals" };
 
@@ -32,8 +38,10 @@ export default async function ApprovalsPage({
       </>
     );
   const sp = await searchParams;
-  const [items, locations, departments, steps] = await Promise.all([
-    approvalInbox(ctx, { type: sp.type, locationId: sp.location, departmentId: sp.department }),
+  const filters = { type: sp.type, locationId: sp.location, departmentId: sp.department };
+  const [items, totals, locations, departments, steps] = await Promise.all([
+    approvalInbox(ctx, filters),
+    inboxTotals(ctx, filters),
     ctx.db.location.findMany({
       where: { archivedAt: null, ...(ctx.managedLocationIds ? { id: { in: ctx.managedLocationIds } } : {}) },
       orderBy: { name: "asc" },
@@ -47,7 +55,7 @@ export default async function ApprovalsPage({
     select: { id: true, firstName: true, lastName: true },
   });
   const decider = new Map(deciders.map((d) => [d.id, fullName(d)]));
-  const waiting = items.filter((i) => i.canDecide).length;
+  const waiting = totals.waiting;
 
   return (
     <>
@@ -97,7 +105,15 @@ export default async function ApprovalsPage({
       {items.length === 0 ? (
         <EmptyState icon={Inbox} title="All caught up" description="No requests are waiting." />
       ) : (
-        <ApprovalList items={items} />
+        <>
+          {totals.total > items.length ? (
+            <p className="text-muted-foreground mb-3 text-sm">
+              Showing the oldest {INBOX_LIMIT} of {totals.total.toLocaleString()} pending requests. Narrow it
+              down by type, branch or department, or decide these first.
+            </p>
+          ) : null}
+          <ApprovalList items={items} />
+        </>
       )}
       {steps.length ? (
         <Card className="mt-8">

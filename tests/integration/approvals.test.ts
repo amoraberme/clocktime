@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { atMinute, dateKey, toLocalDateTimeInput } from "@/lib/time";
 import { prisma } from "@/server/db";
 import type { AppContext } from "@/server/context";
-import { approvalInbox } from "@/server/queries/approvals";
+import { approvalInbox, inboxTotals } from "@/server/queries/approvals";
 import { decideLeave } from "@/server/services/leave";
 import {
   decideCorrection,
@@ -77,6 +77,14 @@ describe("requests and approvals", () => {
     await expect(decideLeave(t.as.supervisor, req.id, true)).rejects.toThrow(/waiting for HR/);
     const inbox = await approvalInbox(t.as.supervisor);
     expect(inbox.find((i) => i.id === req.id)?.canDecide).toBe(false);
+    // The sidebar badge counts with grouped queries; it must agree with the full inbox.
+    for (const who of [t.as.supervisor, t.as.hr]) {
+      const full = await approvalInbox(who);
+      expect(await inboxTotals(who)).toEqual({
+        total: full.length,
+        waiting: full.filter((i) => i.canDecide).length,
+      });
+    }
     await decideLeave(t.as.hr, req.id, true);
     row = await prisma.leaveRequest.findUniqueOrThrow({ where: { id: req.id } });
     expect(row.status).toBe("APPROVED");

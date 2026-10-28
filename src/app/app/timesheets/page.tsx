@@ -16,13 +16,15 @@ import { currentPeriod, teamPeriodSummary } from "@/server/services/timesheets";
 
 export const metadata: Metadata = { title: "Timesheets" };
 
+const PAGE_SIZE = 100;
+
 export default async function TimesheetsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ start?: string }>;
+  searchParams: Promise<{ start?: string; page?: string }>;
 }) {
   const ctx = await requireContext("MANAGER");
-  const { start } = await searchParams;
+  const { start, page: pageParam } = await searchParams;
   const period = currentPeriod(ctx, start);
   const isCurrent = currentPeriod(ctx).start === period.start;
   const rows = await teamPeriodSummary(ctx, period);
@@ -39,6 +41,11 @@ export default async function TimesheetsPage({
     .filter((r) => r.timesheet?.status !== "APPROVED" && r.timesheet?.status !== "LOCKED")
     .map((r) => r.employee.id);
   const canApprove = ctx.can("approvals");
+  // Totals cover everyone; the table shows a page at a time (1,000+ rows would be megabytes).
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const page = Math.min(pages, Math.max(1, Number(pageParam) || 1));
+  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const pageHref = (n: number) => `?start=${period.start}&page=${n}`;
 
   return (
     <>
@@ -92,7 +99,7 @@ export default async function TimesheetsPage({
             </tr>
           </THead>
           <TBody>
-            {rows.map(({ employee: e, hours, gross, timesheet, openExceptions, entries }) => (
+            {pageRows.map(({ employee: e, hours, gross, timesheet, openExceptions, entries }) => (
               <TR key={e.id}>
                 <TD>
                   <Link
@@ -145,6 +152,18 @@ export default async function TimesheetsPage({
             ))}
           </TBody>
         </Table>
+        {pages > 1 ? (
+          <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
+            <span className="text-muted-foreground">
+              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, rows.length)} of{" "}
+              {rows.length.toLocaleString()}
+            </span>
+            <span className="flex gap-4">
+              {page > 1 ? <Link href={pageHref(page - 1)}>← Previous</Link> : null}
+              {page < pages ? <Link href={pageHref(page + 1)}>Next →</Link> : null}
+            </span>
+          </div>
+        ) : null}
       </Card>
     </>
   );

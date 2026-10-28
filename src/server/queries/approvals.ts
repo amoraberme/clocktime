@@ -54,22 +54,35 @@ function who(e: Emp) {
   };
 }
 
-/** Everything waiting on a decision from this user's scope, oldest first. */
-export async function approvalInbox(ctx: AppContext, f: InboxFilters = {}): Promise<InboxItem[]> {
-  const tz = ctx.company.timezone;
-  const employee: Prisma.EmployeeWhereInput = {
+/** The page lists at most this many requests (oldest first); the header shows the full count. */
+export const INBOX_LIMIT = 200;
+
+function inboxEmployee(ctx: AppContext, f: InboxFilters): Prisma.EmployeeWhereInput {
+  return {
     ...employeeScopeWhere(ctx),
     ...(f.departmentId ? { departmentId: f.departmentId } : {}),
     ...(f.locationId ? { AND: [{ locations: { some: { locationId: f.locationId } } }] } : {}),
   };
+}
+
+/** Everything waiting on a decision from this user's scope, oldest first (up to `limit`). */
+export async function approvalInbox(
+  ctx: AppContext,
+  f: InboxFilters = {},
+  limit = INBOX_LIMIT,
+): Promise<InboxItem[]> {
+  const tz = ctx.company.timezone;
+  const employee = inboxEmployee(ctx, f);
   const want = (t: InboxType) => !f.type || f.type === t;
   const pending = { status: "PENDING" as const, employee };
+  const take = limit;
   const [leave, overtime, schedule, corrections, swaps, claims] = await Promise.all([
     want("LEAVE") && ctx.can("leave")
       ? ctx.db.leaveRequest.findMany({
           where: pending,
           include: { employee: { include: employeeInclude }, leaveType: true },
           orderBy: { createdAt: "asc" },
+          take,
         })
       : [],
     want("OVERTIME") && ctx.can("overtime")
@@ -77,6 +90,7 @@ export async function approvalInbox(ctx: AppContext, f: InboxFilters = {}): Prom
           where: pending,
           include: { employee: { include: employeeInclude } },
           orderBy: { createdAt: "asc" },
+          take,
         })
       : [],
     want("SCHEDULE") && ctx.can("approvals")
@@ -84,6 +98,7 @@ export async function approvalInbox(ctx: AppContext, f: InboxFilters = {}): Prom
           where: pending,
           include: { employee: { include: employeeInclude }, shift: true },
           orderBy: { createdAt: "asc" },
+          take,
         })
       : [],
     want("CORRECTION") && ctx.can("approvals")
@@ -91,6 +106,7 @@ export async function approvalInbox(ctx: AppContext, f: InboxFilters = {}): Prom
           where: pending,
           include: { employee: { include: employeeInclude } },
           orderBy: { createdAt: "asc" },
+          take,
         })
       : [],
     want("SWAP") && ctx.can("shiftSwaps")
@@ -98,6 +114,7 @@ export async function approvalInbox(ctx: AppContext, f: InboxFilters = {}): Prom
           where: { status: "PENDING_MANAGER", requester: employee },
           include: { requester: { include: employeeInclude }, targetEmployee: true, shift: true },
           orderBy: { createdAt: "asc" },
+          take,
         })
       : [],
     want("CLAIM") && ctx.can("openShifts")
@@ -105,6 +122,7 @@ export async function approvalInbox(ctx: AppContext, f: InboxFilters = {}): Prom
           where: { status: "PENDING", shift: { companyId: ctx.company.id, employeeId: null }, employee },
           include: { employee: { include: employeeInclude }, shift: true },
           orderBy: { createdAt: "asc" },
+          take,
         })
       : [],
   ]);
@@ -189,12 +207,51 @@ export async function approvalInbox(ctx: AppContext, f: InboxFilters = {}): Prom
       approveLabel: "Approve" as const,
     })),
   ];
-  return items.sort((a, b) => a.filedAt.localeCompare(b.filedAt));
+  return items.sort((a, b) => a.filedAt.localeCompare(b.filedAt)).slice(0, limit);
+}
+
+/**
+ * Pending requests in this user's scope (`total`) and how many this user can decide (`waiting`),
+ * from counts rather than loading every request: the sidebar badge runs this on every page.
+ */
+export async function inboxTotals(ctx: AppContext, f: InboxFilters = {}) {
+  const employee = inboxEmployee(ctx, f);
+  const want = (t: InboxType) => !f.type || f.type === t;
+  const pending = { status: "PENDING" as const, employee };
+  const byLevel = { by: ["currentLevel" as const], where: pending, _count: { _all: true as const } };
+  const [leave, overtime, schedule, corrections, swaps, claims] = await Promise.all([
+    want("LEAVE") && ctx.can("leave") ? ctx.db.leaveRequest.groupBy(byLevel) : [],
+    want("OVERTIME") && ctx.can("overtime") ? ctx.db.overtimeRequest.groupBy(byLevel) : [],
+    want("SCHEDULE") && ctx.can("approvals") ? ctx.db.scheduleChangeRequest.groupBy(byLevel) : [],
+    want("CORRECTION") && ctx.can("approvals") ? ctx.db.attendanceCorrectionRequest.groupBy(byLevel) : [],
+    want("SWAP") && ctx.can("shiftSwaps")
+      ? ctx.db.shiftSwapRequest.count({ where: { status: "PENDING_MANAGER", requester: employee } })
+      : 0,
+    want("CLAIM") && ctx.can("openShifts")
+      ? prisma.openShiftClaim.count({
+          where: { status: "PENDING", shift: { companyId: ctx.company.id, employeeId: null }, employee },
+        })
+      : 0,
+  ]);
+  let total = swaps + claims;
+  let waiting = ctx.approves("schedule") ? swaps + claims : 0;
+  const levels: [RequestType, { currentLevel: number; _count: { _all: number } }[]][] = [
+    ["LEAVE", leave],
+    ["OVERTIME", overtime],
+    ["SCHEDULE", schedule],
+    ["CORRECTION", corrections],
+  ];
+  for (const [type, rows] of levels)
+    for (const r of rows) {
+      total += r._count._all;
+      if (canDecideAt(ctx, type, r.currentLevel)) waiting += r._count._all;
+    }
+  return { total, waiting };
 }
 
 /** How many requests are waiting on this user, for the dashboard and sidebar badge. */
 export async function inboxCount(ctx: AppContext) {
-  return (await approvalInbox(ctx)).filter((i) => i.canDecide).length;
+  return (await inboxTotals(ctx)).waiting;
 }
 
 export type MyRequest = {

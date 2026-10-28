@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "clocktime-local",
+      "credentials": [{ "accessKey": "clocktime-local", "secretKey": "clocktime-local-secret" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

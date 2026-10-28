@@ -39,7 +39,8 @@ export type LocalParts = {
 
 const WEEKDAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
-export function localParts(instant: Date, tz: string): LocalParts {
+/** Exact conversion through Intl (slow: pay computations call this per worked minute). */
+export function localPartsIntl(instant: Date, tz: string): LocalParts {
   const out: Record<string, string> = {};
   for (const p of partsFormatter(tz).formatToParts(instant)) out[p.type] = p.value;
   return {
@@ -50,6 +51,54 @@ export function localParts(instant: Date, tz: string): LocalParts {
     minute: Number(out.minute),
     second: Number(out.second),
     weekday: WEEKDAYS[out.weekday!] ?? 0,
+  };
+}
+
+// Since 1970 every zone's UTC offset is a whole number of minutes and changes only on 15-minute
+// UTC boundaries, so one Intl lookup per zone per 15 minutes gives the offset for all instants in
+// between. Payroll for 1,500 people walks millions of minutes; this makes that arithmetic.
+const OFFSET_BUCKET_MS = 15 * 60_000;
+const offsetCache = new Map<string, Map<number, number>>();
+
+function offsetMsAt(t: number, tz: string) {
+  let zone = offsetCache.get(tz);
+  if (!zone) offsetCache.set(tz, (zone = new Map()));
+  const bucket = Math.floor(t / OFFSET_BUCKET_MS);
+  let off = zone.get(bucket);
+  if (off === undefined) {
+    const p = localPartsIntl(new Date(t), tz);
+    off = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(t / 1000) * 1000;
+    if (zone.size > 100_000) zone.clear();
+    zone.set(bucket, off);
+  }
+  return off;
+}
+
+/**
+ * Local time minus UTC at an instant, in milliseconds (Manila = 8 h). Constant within each
+ * 15-minute UTC block, so tight loops can call it once per block.
+ */
+export function tzOffsetMs(instant: Date, tz: string) {
+  const t = instant.getTime();
+  if (!(t >= 0)) {
+    const p = localPartsIntl(instant, tz);
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(t / 1000) * 1000;
+  }
+  return offsetMsAt(t, tz);
+}
+
+export function localParts(instant: Date, tz: string): LocalParts {
+  const t = instant.getTime();
+  if (!(t >= 0)) return localPartsIntl(instant, tz); // pre-1970 (historic odd offsets) or invalid
+  const d = new Date(t + offsetMsAt(t, tz));
+  return {
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth() + 1,
+    day: d.getUTCDate(),
+    hour: d.getUTCHours(),
+    minute: d.getUTCMinutes(),
+    second: d.getUTCSeconds(),
+    weekday: d.getUTCDay(),
   };
 }
 

@@ -13,12 +13,14 @@ import { formatHoursDecimal } from "@/lib/time";
 import { requireContext } from "@/server/context";
 import { filtersFromParams } from "@/server/reports/report-params";
 import { employeeScopeWhere } from "@/server/scope";
-import { buildAttendanceReport } from "@/server/services/attendance-report";
+import { cachedAttendanceReport } from "@/server/services/attendance-report";
 import { currentPeriod } from "@/server/services/timesheets";
 
 export const metadata: Metadata = { title: "Reports" };
 
 const hrs = (m: number) => formatHoursDecimal(m);
+
+const PREVIEW_ROWS = 100;
 
 export default async function ReportsPage({
   searchParams,
@@ -57,12 +59,16 @@ export default async function ReportsPage({
     }),
   ]);
   const needsBranch = !ctx.can("consolidatedReports") && locations.length > 1 && !filters.locationId;
-  const report = needsBranch ? null : await buildAttendanceReport(ctx, period, filters);
+  const report = needsBranch ? null : await cachedAttendanceReport(ctx, period, filters);
   const qs = new URLSearchParams(
     Object.entries({ ...sp, start: period.start }).filter((e): e is [string, string] => !!e[1]),
   );
   const exportHref = (extra: Record<string, string>) =>
     `/api/export/attendance?${new URLSearchParams({ ...Object.fromEntries(qs), ...extra })}`;
+  // The preview lists the people with the most to review; the downloads have everyone.
+  const preview = report
+    ? [...report.summary].sort((a, b) => b.reviewItems - a.reviewItems).slice(0, PREVIEW_ROWS)
+    : [];
   const totals = report?.summary.reduce(
     (t, s) => ({
       worked: t.worked + s.workedMinutes,
@@ -240,7 +246,7 @@ export default async function ReportsPage({
                 </tr>
               </THead>
               <TBody>
-                {report.summary.map((s) => (
+                {preview.map((s) => (
                   <TR key={s.employeeId}>
                     <TD>
                       <Link
@@ -274,6 +280,12 @@ export default async function ReportsPage({
                 ))}
               </TBody>
             </Table>
+            {report.summary.length > preview.length ? (
+              <p className="text-muted-foreground border-t px-4 py-3 text-sm">
+                Showing the {preview.length} people with the most to review, of{" "}
+                {report.summary.length.toLocaleString()}. Everyone is in the Excel workbook and CSV downloads.
+              </p>
+            ) : null}
           </Card>
         </>
       )}

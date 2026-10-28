@@ -11,7 +11,7 @@ import {
   weekday,
   type PayPeriod,
 } from "@/lib/time";
-import { fullName } from "@/lib/utils";
+import { fullName, groupBy, yieldEvery } from "@/lib/utils";
 import type { AppContext } from "../context";
 import { prisma } from "../db";
 import { employeeScopeWhere } from "../scope";
@@ -159,6 +159,38 @@ const FLAG_REMARKS: Record<string, string> = {
 };
 
 /** One row per person per day of the cutoff, plus per-person and per-branch totals. */
+const REPORT_TTL_MS = 60_000;
+const reportCache = new Map<string, { at: number; report: Promise<AttendanceReport> }>();
+
+/**
+ * The cutoff report, shared for a minute between requests that would compute the same thing (the
+ * page, the Excel export and the API for the same company, period, filters and scope). A nationwide
+ * report for 1,000+ people takes seconds of CPU; HR opening it and downloading it right after
+ * shouldn't pay twice, and simultaneous requests share one computation.
+ */
+export function cachedAttendanceReport(
+  ctx: Ctx,
+  period: Pick<PayPeriod, "start" | "end">,
+  filters: ReportFilters = {},
+): Promise<AttendanceReport> {
+  const key = JSON.stringify([
+    ctx.company.id,
+    period.start,
+    period.end,
+    filters,
+    ctx.managedLocationIds,
+    ctx.managedDepartmentIds,
+  ]);
+  const now = Date.now();
+  const hit = reportCache.get(key);
+  if (hit && now - hit.at < REPORT_TTL_MS) return hit.report;
+  for (const [k, v] of reportCache) if (now - v.at >= REPORT_TTL_MS) reportCache.delete(k);
+  const report = buildAttendanceReport(ctx, period, filters);
+  reportCache.set(key, { at: now, report });
+  report.catch(() => reportCache.delete(key));
+  return report;
+}
+
 export async function buildAttendanceReport(
   ctx: Ctx,
   period: Pick<PayPeriod, "start" | "end">,
@@ -248,9 +280,19 @@ export async function buildAttendanceReport(
   const asOf = today < period.end ? today : undefined;
   const days = eachDay(period.start, period.end);
 
+  const entriesBy = groupBy(entries, (e) => e.employeeId);
+  const shiftsBy = groupBy(shifts, (s) => s.employeeId);
+  const leavesBy = groupBy(leaves, (l) => l.employeeId);
+  const exceptionsBy = groupBy(exceptions, (x) => x.employeeId);
+  const pendingOtBy = groupBy(
+    otRequests.filter((r) => r.status === "PENDING"),
+    (r) => r.employeeId,
+  );
+
   const daily: DailyRow[] = [];
   const summary: EmployeeSummary[] = [];
-  for (const emp of employees) {
+  for (const [i, emp] of employees.entries()) {
+    await yieldEvery(i);
     const primary = [...emp.locations].sort((a, b) => a.location.name.localeCompare(b.location.name))[0]
       ?.location;
     const ident = {
@@ -262,7 +304,7 @@ export async function buildAttendanceReport(
       branchCode: primary?.code ?? "",
       region: primary?.region?.name ?? "",
     };
-    const own = entries.filter((e) => e.employeeId === emp.id);
+    const own = entriesBy.get(emp.id) ?? [];
     const { hours } = computeEmployeePeriod(ctx, emp, own, period, inputs, asOf);
     const byDay = new Map(hours.days.map((d) => [d.date, d]));
     // When overtime needs approval, someone with no approved requests has none approved.
@@ -270,13 +312,14 @@ export async function buildAttendanceReport(
       ? (inputs.approvedOt.get(emp.id) ?? new Map<string, number>())
       : null;
     const pendingOt = new Map<string, number>();
-    for (const r of otRequests)
-      if (r.employeeId === emp.id && r.status === "PENDING")
-        pendingOt.set(utcDateToKey(r.date), (pendingOt.get(utcDateToKey(r.date)) ?? 0) + r.minutes);
-    const ownShifts = shifts.filter((s) => s.employeeId === emp.id);
+    for (const r of pendingOtBy.get(emp.id) ?? [])
+      pendingOt.set(utcDateToKey(r.date), (pendingOt.get(utcDateToKey(r.date)) ?? 0) + r.minutes);
+    const ownShifts = shiftsBy.get(emp.id) ?? [];
     const usesSchedule = ownShifts.length > 0;
-    const ownLeave = leaves.filter((l) => l.employeeId === emp.id);
-    const ownExceptions = exceptions.filter((x) => x.employeeId === emp.id);
+    const ownLeave = leavesBy.get(emp.id) ?? [];
+    const ownExceptions = exceptionsBy.get(emp.id) ?? [];
+    const shiftsByDay = groupBy(ownShifts, (x) => dateKey(x.startAt, tz));
+    const entriesByDay = groupBy(own, (e) => dateKey(e.clockInAt, tz));
 
     const s: EmployeeSummary = {
       ...ident,
@@ -300,8 +343,8 @@ export async function buildAttendanceReport(
       const dayType = dayTypeFor(day, { holidays: inputs.holidays, restDays: emp.restDays });
       const isRest = emp.restDays.includes(weekday(day));
       const holidayLabel = holidayNames.get(day)?.join(" / ");
-      const dayShifts = ownShifts.filter((x) => dateKey(x.startAt, tz) === day);
-      const dayEntries = own.filter((e) => dateKey(e.clockInAt, tz) === day);
+      const dayShifts = shiftsByDay.get(day) ?? [];
+      const dayEntries = entriesByDay.get(day) ?? [];
       const sum = byDay.get(day);
       const leave = ownLeave.find((l) => day >= utcDateToKey(l.startDate) && day <= utcDateToKey(l.endDate));
       const holidayOff = (inputs.holidays.get(day) ?? []).some((h) => h !== "SPECIAL_WORKING");

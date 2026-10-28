@@ -1,4 +1,5 @@
 import "server-only";
+import { groupBy } from "@/lib/utils";
 import { dailyRate } from "@/lib/pay/gross";
 import { elapsedMinutes } from "@/lib/pay/hours";
 import { addDays, dateKey, startOfDay } from "@/lib/time";
@@ -75,19 +76,22 @@ export async function dashboardData(ctx: AppContext) {
     laborCost += (mins / 60) * hourly;
   }
 
+  const entriesByEmployee = groupBy(visibleEntries, (e) => e.employeeId);
   const lateOrMissing = shifts.filter((s) => {
     if (!s.employeeId || !byId.has(s.employeeId)) return false;
     if (s.startAt.getTime() + ctx.settings.lateGraceMinutes * 60000 > now.getTime()) return false;
-    return !visibleEntries.some(
-      (e) => e.employeeId === s.employeeId && e.clockInAt < s.endAt && (e.clockOutAt ?? now) > s.startAt,
+    return !(entriesByEmployee.get(s.employeeId) ?? []).some(
+      (e) => e.clockInAt < s.endAt && (e.clockOutAt ?? now) > s.startAt,
     );
   });
 
+  const shiftsBy = groupBy(shifts, (s) => s.employeeId);
+  const entriesBy = groupBy(visibleEntries, (e) => e.employeeId);
   const timeline = employees
     .map((emp) => ({
       employee: emp,
-      shifts: shifts.filter((s) => s.employeeId === emp.id),
-      entries: visibleEntries.filter((e) => e.employeeId === emp.id),
+      shifts: shiftsBy.get(emp.id) ?? [],
+      entries: entriesBy.get(emp.id) ?? [],
     }))
     .filter((r) => r.shifts.length > 0 || r.entries.length > 0);
 

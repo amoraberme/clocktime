@@ -1,5 +1,13 @@
 import "server-only";
+import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "@/lib/env";
+
+let transport: Transporter | undefined;
+/** One pooled SMTP connection per server instance. */
+function smtp(url: string) {
+  transport ??= nodemailer.createTransport(url.includes("?") ? `${url}&pool=true` : `${url}?pool=true`);
+  return transport;
+}
 
 export type EmailMessage = {
   to: string;
@@ -31,6 +39,17 @@ export async function sendEmail(message: EmailMessage) {
       }),
     });
     if (!res.ok) throw new Error(`Resend error ${res.status}: ${await res.text()}`);
+    return;
+  }
+  if (e.EMAIL_PROVIDER === "smtp" && e.SMTP_URL) {
+    await smtp(e.SMTP_URL).sendMail({
+      from: e.EMAIL_FROM,
+      to: message.to,
+      subject: message.subject,
+      html: message.html,
+      text: message.text,
+      attachments: message.attachments,
+    });
     return;
   }
   devOutbox.push(message);

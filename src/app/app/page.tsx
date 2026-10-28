@@ -20,6 +20,17 @@ export const metadata: Metadata = { title: "Dashboard" };
 
 const TIMELINE_START_H = 5;
 const TIMELINE_HOURS = 19;
+/** Lists show this many people; with hundreds on shift, drill into a branch for everyone. */
+const LIST_LIMIT = 50;
+
+function More({ shown, total }: { shown: number; total: number }) {
+  if (total <= shown) return null;
+  return (
+    <p className="text-muted-foreground mt-3 text-sm">
+      and {(total - shown).toLocaleString()} more. Open a branch above to see everyone there.
+    </p>
+  );
+}
 
 export default async function DashboardPage({
   searchParams,
@@ -126,37 +137,40 @@ export default async function DashboardPage({
                 description="Punches from phones and kiosks show up here live."
               />
             ) : (
-              <ul className="divide-y">
-                {d.onClock.map(({ entry, employee }) => {
-                  const onBreak = entry.breaks.some((b) => !b.endAt);
-                  return (
-                    <li key={entry.id} className="flex items-center gap-3 py-2.5">
-                      <Avatar
-                        firstName={employee.firstName}
-                        lastName={employee.lastName}
-                        color={employee.color}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <Link
-                          href={`/app/team/${employee.id}`}
-                          className="truncate font-medium hover:underline"
-                        >
-                          {fullName(employee)}
-                        </Link>
-                        <p className="text-muted-foreground truncate text-xs">
-                          {entry.location?.name ?? "No location"} · since {formatTime(entry.clockInAt, tz)} ·{" "}
-                          {entry.inSource.toLowerCase()}
-                        </p>
-                      </div>
-                      {entry.inOutsideGeofence ? <Badge tone="warning">Outside geofence</Badge> : null}
-                      {onBreak ? <Badge tone="warning">On break</Badge> : null}
-                      <span className="tabular text-sm font-medium">
-                        {formatMinutes(elapsedMinutes(entry))}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
+              <>
+                <ul className="divide-y">
+                  {d.onClock.slice(0, LIST_LIMIT).map(({ entry, employee }) => {
+                    const onBreak = entry.breaks.some((b) => !b.endAt);
+                    return (
+                      <li key={entry.id} className="flex items-center gap-3 py-2.5">
+                        <Avatar
+                          firstName={employee.firstName}
+                          lastName={employee.lastName}
+                          color={employee.color}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <Link
+                            href={`/app/team/${employee.id}`}
+                            className="truncate font-medium hover:underline"
+                          >
+                            {fullName(employee)}
+                          </Link>
+                          <p className="text-muted-foreground truncate text-xs">
+                            {entry.location?.name ?? "No location"} · since {formatTime(entry.clockInAt, tz)}{" "}
+                            · {entry.inSource.toLowerCase()}
+                          </p>
+                        </div>
+                        {entry.inOutsideGeofence ? <Badge tone="warning">Outside geofence</Badge> : null}
+                        {onBreak ? <Badge tone="warning">On break</Badge> : null}
+                        <span className="tabular text-sm font-medium">
+                          {formatMinutes(elapsedMinutes(entry))}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <More shown={LIST_LIMIT} total={d.onClock.length} />
+              </>
             )}
           </CardContent>
         </Card>
@@ -221,7 +235,7 @@ export default async function DashboardPage({
                   </div>
                 </div>
                 <div className="mt-1 space-y-2">
-                  {d.timeline.map(({ employee, shifts, entries }) => (
+                  {d.timeline.slice(0, LIST_LIMIT).map(({ employee, shifts, entries }) => (
                     <div key={employee.id} className="flex items-center gap-2">
                       <div className="w-38 shrink-0 truncate text-sm">{fullName(employee)}</div>
                       <div className="bg-muted relative h-7 flex-1 rounded">
@@ -259,6 +273,7 @@ export default async function DashboardPage({
                     </div>
                   ))}
                 </div>
+                <More shown={LIST_LIMIT} total={d.timeline.length} />
                 <p className="text-muted-foreground mt-3 text-xs">
                   Dashed = scheduled · solid = worked · amber = break · red line = now
                 </p>
@@ -277,7 +292,7 @@ export default async function DashboardPage({
           </CardHeader>
           <CardContent>
             <ul className="divide-y text-sm">
-              {d.lateOrMissing.map(({ shift, employee }) => (
+              {d.lateOrMissing.slice(0, LIST_LIMIT).map(({ shift, employee }) => (
                 <li key={shift.id} className="flex items-center justify-between py-2">
                   <span>{fullName(employee)}</span>
                   <span className="text-muted-foreground">
@@ -286,6 +301,7 @@ export default async function DashboardPage({
                 </li>
               ))}
             </ul>
+            <More shown={LIST_LIMIT} total={d.lateOrMissing.length} />
           </CardContent>
         </Card>
       ) : null}

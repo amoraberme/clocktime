@@ -1,4 +1,5 @@
 import "server-only";
+import { groupBy, yieldEvery } from "@/lib/utils";
 import type { Employee } from "@/generated/prisma/client";
 import { computeGross, type GrossResult } from "@/lib/pay/gross";
 import { computeHours, type EntryInput, type HoursContext, type HoursResult } from "@/lib/pay/hours";
@@ -248,15 +249,21 @@ export async function teamPeriodSummary(ctx: AppContext, period: { start: string
     }),
   ]);
   const asOf = todayKey(ctx);
-  return employees.map((emp) => {
-    const own = entries.filter((e) => e.employeeId === emp.id);
+  const entriesBy = groupBy(entries, (e) => e.employeeId);
+  const timesheetBy = new Map(timesheets.map((t) => [t.employeeId, t]));
+  const exceptionCount = new Map(exceptions.map((x) => [x.employeeId, x._count]));
+  const rows = [];
+  for (const [i, emp] of employees.entries()) {
+    await yieldEvery(i);
+    const own = entriesBy.get(emp.id) ?? [];
     const result = computeEmployeePeriod(ctx, emp, own, period, inputs, asOf < period.end ? asOf : undefined);
-    return {
+    rows.push({
       employee: emp,
       entries: own,
       ...result,
-      timesheet: timesheets.find((t) => t.employeeId === emp.id) ?? null,
-      openExceptions: exceptions.find((x) => x.employeeId === emp.id)?._count ?? 0,
-    };
-  });
+      timesheet: timesheetBy.get(emp.id) ?? null,
+      openExceptions: exceptionCount.get(emp.id) ?? 0,
+    });
+  }
+  return rows;
 }

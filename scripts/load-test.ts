@@ -9,6 +9,15 @@
  * terminal's whole log in one request, like terminals reconnecting after an outage.
  *   pnpm load:test cleanup                                     # deletes the throwaway company
  *
+ * Against a seeded company (pnpm seed:scale), a mixed rush with real accounts:
+ *   pnpm load:test run --url http://localhost:8080 --company scale-test [--seconds 60]
+ *        [--api 400] [--phone 400] [--terminal 500] [--hr 3] [--hr-every 20] [--fresh]
+ * API clock-ins, people signing in and punching from their phones, terminal taps, and HR opening
+ * the nationwide dashboard, the cutoff report and the Excel export, all at once. Everyone clocks in
+ * in the first half and out in the second. --fresh first removes today's punches from earlier runs
+ * (the seeded history ends yesterday), so every run starts from the same state.
+ * Phone sign-ins all come from one IP: the server needs AUTH_RATE_LIMIT=off (local copy only).
+ *
  * `setup` writes the company id, API key and terminal serials to .load-test.json (git-ignored).
  * It talks to the database in DATABASE_URL, so run it with the same env as the server under test.
  */
@@ -224,7 +233,197 @@ async function run() {
   if (failed) process.exitCode = 1;
 }
 
-const commands: Record<string, () => Promise<void>> = { setup, run, cleanup };
+async function runCompany(slug: string) {
+  const { prisma } = await import("@/server/db");
+  const { createApiKey } = await import("@/server/api-auth");
+  const company = await prisma.company.findUnique({ where: { slug } });
+  if (!company) throw new Error(`No company "${slug}". Seed it first: pnpm seed:scale`);
+  const base = (args.url ?? "http://localhost:3000").replace(/\/$/, "");
+  const origin = (process.env.APP_URL ?? base).replace(/\/$/, "");
+  const seconds = num("seconds", 60);
+  const people = await prisma.employee.findMany({
+    where: { companyId: company.id, status: "ACTIVE", role: "EMPLOYEE" },
+    select: {
+      employeeNo: true,
+      deviceUserId: true,
+      email: true,
+      fieldWork: true,
+      departmentId: true,
+      locations: { select: { location: { select: { latitude: true, longitude: true } } } },
+    },
+    orderBy: { employeeNo: "asc" },
+  });
+  if ("fresh" in args) {
+    // The seeded history ends yesterday: everything from today on came from earlier load tests.
+    const today = new Date(
+      `${new Intl.DateTimeFormat("en-CA", { timeZone: company.timezone }).format(new Date())}T00:00:00+08:00`,
+    );
+    const [p, e] = await prisma.$transaction([
+      prisma.punch.deleteMany({
+        where: {
+          companyId: company.id,
+          at: { gte: new Date(today.getTime() - 3600_000) },
+          NOT: { clientId: { startsWith: "scale:" } },
+        },
+      }),
+      prisma.timeEntry.deleteMany({ where: { companyId: company.id, clockInAt: { gte: today } } }),
+    ]);
+    console.log(`--fresh: removed ${p.count} punches and ${e.count} time entries from earlier runs today.`);
+  }
+  const devices = await prisma.attendanceDevice.findMany({
+    where: { companyId: company.id },
+    select: { serialNumber: true },
+  });
+  const hrEmails = (
+    await prisma.employee.findMany({
+      where: { companyId: company.id, role: { in: ["HR", "OWNER"] } },
+      select: { email: true },
+    })
+  ).map((e) => e.email!);
+  // Disjoint groups so no one is punched by two channels at once.
+  const office = people.filter((p) => !p.fieldWork);
+  const phoneGroup = office.slice(0, num("phone", 400));
+  const rest = people.filter((p) => !phoneGroup.includes(p));
+  const apiGroup = rest.slice(0, num("api", 400));
+  const terminalGroup = rest.slice(apiGroup.length, apiGroup.length + num("terminal", 500));
+  const { key, row } = await createApiKey(
+    company.id,
+    "load test (temporary)",
+    ["punch", "read"],
+    (await prisma.employee.findFirstOrThrow({ where: { companyId: company.id, role: "OWNER" } })).id,
+  );
+
+  const samples: Record<string, Sample[]> = {
+    "Sign-ins (before the rush)": [],
+    "Phone punches": [],
+    "API punches": [],
+    "Terminal taps": [],
+    "HR dashboard": [],
+    "HR report": [],
+    "HR Excel export": [],
+  };
+  let started = 0;
+  const half = (seconds * 1000) / 2;
+  const at = (window: 0 | 1) => started + window * half + Math.random() * half * 0.9;
+  const sleepUntil = (t: number) => new Promise((r) => setTimeout(r, Math.max(0, t - Date.now())));
+  console.log(
+    `${company.name}: ${phoneGroup.length} phone users, ${apiGroup.length} API, ${terminalGroup.length} terminal taps ` +
+      `(${devices.length} terminals), ${num("hr", 3)} HR users, over ${seconds}s → ${base}`,
+  );
+
+  async function signIn(email: string) {
+    const s = await timed(() =>
+      fetch(`${base}/api/auth/sign-in/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: origin },
+        body: JSON.stringify({ email, password: args.password ?? "demo12345" }),
+        redirect: "manual",
+      }).then((res) => {
+        cookies.set(email, (res.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; "));
+        return res;
+      }),
+    );
+    samples["Sign-ins (before the rush)"]!.push(s);
+    return cookies.get(email) ?? "";
+  }
+  const cookies = new Map<string, string>();
+
+  // People's phones stay signed in (sessions last 30 days), so they sign in before the rush, not
+  // during it: 20 at a time, like a morning of people opening the app.
+  const hrUsers = Array.from({ length: num("hr", 3) }, (_, i) => hrEmails[i % hrEmails.length]!);
+  const toSignIn = [...phoneGroup.map((p) => p.email!), ...hrUsers];
+  for (let i = 0; i < toSignIn.length; i += 20) await Promise.all(toSignIn.slice(i, i + 20).map(signIn));
+  started = Date.now();
+
+  const phone = phoneGroup.map(async (p) => {
+    const cookie = cookies.get(p.email!) ?? "";
+    const loc = p.locations[0]?.location;
+    for (const [action, window] of [
+      ["CLOCK_IN", 0],
+      ["CLOCK_OUT", 1],
+    ] as const) {
+      await sleepUntil(Math.max(at(window), Date.now()));
+      samples["Phone punches"]!.push(
+        await timed(() =>
+          fetch(`${base}/api/punch`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Cookie: cookie, Origin: origin },
+            body: JSON.stringify({
+              action,
+              clientId: randomUUID(),
+              lat: loc?.latitude ?? null,
+              lng: loc?.longitude ?? null,
+              accuracy: 12,
+            }),
+          }),
+        ),
+      );
+    }
+  });
+  const api = apiGroup.map(async (p) => {
+    for (const [action, window] of [
+      ["CLOCK_IN", 0],
+      ["CLOCK_OUT", 1],
+    ] as const) {
+      await sleepUntil(at(window));
+      samples["API punches"]!.push(
+        await timed(() =>
+          fetch(`${base}/api/v1/punches`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ employeeNo: p.employeeNo, action, clientId: randomUUID() }),
+          }),
+        ),
+      );
+    }
+  });
+  const local = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: company.timezone,
+    dateStyle: "short",
+    timeStyle: "medium",
+  });
+  const terminal = terminalGroup.map(async (p, i) => {
+    const sn = devices[i % devices.length]!.serialNumber;
+    for (const window of [0, 1] as const) {
+      await sleepUntil(at(window));
+      const line = `${p.deviceUserId}\t${local.format(new Date())}\t0\t1\t0\t0\n`;
+      samples["Terminal taps"]!.push(
+        await timed(() =>
+          fetch(`${base}/iclock/cdata?SN=${sn}&table=ATTLOG&Stamp=1`, { method: "POST", body: line }),
+        ),
+      );
+    }
+  });
+  const hr = hrUsers.map(async (email) => {
+    const cookie = cookies.get(email) ?? "";
+    const get = (name: string, path: string) =>
+      timed(() => fetch(`${base}${path}`, { headers: { Cookie: cookie }, redirect: "manual" })).then((s) =>
+        samples[name]!.push(s),
+      );
+    while (Date.now() < started + seconds * 1000) {
+      await get("HR dashboard", "/app");
+      await get("HR report", "/app/reports");
+      await get("HR Excel export", "/api/export/attendance?format=xlsx");
+      await new Promise((r) => setTimeout(r, num("hr-every", 20) * 1000));
+    }
+  });
+  await Promise.all([...phone, ...api, ...terminal, ...hr]);
+  await prisma.apiKey.delete({ where: { id: row.id } });
+  const took = (Date.now() - started) / 1000;
+  console.log(`\nFinished in ${took.toFixed(1)}s`);
+  for (const [name, list] of Object.entries(samples)) if (list.length) report(name, list, took);
+  const failed = Object.values(samples)
+    .flat()
+    .filter((s) => s.status !== 200).length;
+  if (failed) process.exitCode = 1;
+  await prisma.$disconnect();
+}
+
+const commands: Record<string, () => Promise<void>> = {
+  setup,
+  run: () => (args.company ? runCompany(args.company) : run()),
+  cleanup,
+};
 if (!commands[cmd]) {
   console.error("Usage: pnpm load:test <setup|run|cleanup> [--flags]");
   process.exit(1);

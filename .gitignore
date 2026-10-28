@@ -13,3 +13,4 @@ playwright-report
 test-results
 .DS_Store
 .load-test.json
+.env.prod
