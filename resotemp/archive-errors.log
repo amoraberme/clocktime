@@ -1,0 +1,11 @@
+# Archive Errors Log - 2026-10-28T05:11:35.757Z
+
+[2026-10-28T05:11:41.747Z] [CRAWL] https://eleven-analytics.nextjsshop-preview.workers.dev/docs => HTTP status 404
+[2026-10-28T05:11:42.174Z] [CRAWL] https://eleven-analytics.nextjsshop-preview.workers.dev/demo/nike.com => HTTP status 404
+[2026-10-28T05:11:42.357Z] [CRAWL] https://eleven-analytics.nextjsshop-preview.workers.dev/revenue-attribution => HTTP status 404
+[2026-10-28T05:11:42.426Z] [CRAWL] https://eleven-analytics.nextjsshop-preview.workers.dev/visitor-profiles => HTTP status 404
+[2026-10-28T05:11:42.592Z] [CRAWL] https://eleven-analytics.nextjsshop-preview.workers.dev/crawlers => HTTP status 404
+[2026-10-28T05:11:42.657Z] [CRAWL] https://eleven-analytics.nextjsshop-preview.workers.dev/realtime => HTTP status 404
+[2026-10-28T05:11:42.795Z] [CRAWL] https://eleven-analytics.nextjsshop-preview.workers.dev/performance => HTTP status 404
+[2026-10-28T05:11:42.879Z] [CRAWL] https://eleven-analytics.nextjsshop-preview.workers.dev/funnels => HTTP status 404
+[2026-10-28T05:11:42.949Z] [CRAWL] https://eleven-analytics.nextjsshop-preview.workers.dev/ai-assistant => HTTP status 404

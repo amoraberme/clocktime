@@ -15,4 +15,5 @@ test-results
 .load-test.json
 .env.prod
 
-resotemp
+resotemp/node_modules
+.vercel

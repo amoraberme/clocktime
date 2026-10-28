@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1436 975" width="100%" height="100%" fill="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FAFAFA" />
+      <stop offset="100%" stop-color="#F4F4F5" />
+    </linearGradient>
+    <linearGradient id="primaryGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2563EB" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#2563EB" stop-opacity="0.0" />
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.05" />
+    </filter>
+  </defs>
+
+  <rect width="1436" height="975" fill="url(#bgGrad)" rx="8" />
+
+  <!-- Top Navbar Header in App -->
+  <rect x="0" y="0" width="1436" height="64" fill="#FFFFFF" />
+  <line x1="0" y1="64" x2="1436" y2="64" stroke="#E4E4E7" stroke-width="1" />
+  <rect x="32" y="20" width="24" height="24" rx="4" fill="#2563EB" />
+  <text x="66" y="37" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="700" fill="#18181B">OpenRevenue</text>
+  <rect x="220" y="16" width="180" height="32" rx="16" fill="#F4F4F5" />
+  <text x="250" y="37" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="500" fill="#71717A">Live Dashboard</text>
+
+  <!-- Metric KPI Cards -->
+  <g filter="url(#shadow)">
+    <!-- Card 1 -->
+    <rect x="32" y="96" width="326" height="130" rx="12" fill="#FFFFFF" stroke="#E4E4E7" />
+    <text x="56" y="132" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="500" fill="#71717A">Net Revenue (MRR)</text>
+    <text x="56" y="180" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="700" fill="#18181B">$142,890</text>
+    <rect x="240" y="156" width="94" height="26" rx="13" fill="#ECFDF5" />
+    <text x="287" y="173" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#059669" text-anchor="middle">+18.4%</text>
+
+    <!-- Card 2 -->
+    <rect x="382" y="96" width="326" height="130" rx="12" fill="#FFFFFF" stroke="#E4E4E7" />
+    <text x="406" y="132" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="500" fill="#71717A">Active Subscribers</text>
+    <text x="406" y="180" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="700" fill="#18181B">3,842</text>
+    <rect x="590" y="156" width="94" height="26" rx="13" fill="#ECFDF5" />
+    <text x="637" y="173" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#059669" text-anchor="middle">+12.1%</text>
+
+    <!-- Card 3 -->
+    <rect x="732" y="96" width="326" height="130" rx="12" fill="#FFFFFF" stroke="#E4E4E7" />
+    <text x="756" y="132" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="500" fill="#71717A">Avg. Revenue / User</text>
+    <text x="756" y="180" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="700" fill="#18181B">$37.19</text>
+    <rect x="940" y="156" width="94" height="26" rx="13" fill="#ECFDF5" />
+    <text x="987" y="173" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#059669" text-anchor="middle">+4.6%</text>
+
+    <!-- Card 4 -->
+    <rect x="1082" y="96" width="322" height="130" rx="12" fill="#FFFFFF" stroke="#E4E4E7" />
+    <text x="1106" y="132" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="500" fill="#71717A">Gross Churn Rate</text>
+    <text x="1106" y="180" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="700" fill="#18181B">0.82%</text>
+    <rect x="1286" y="156" width="94" height="26" rx="13" fill="#ECFDF5" />
+    <text x="1333" y="173" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#059669" text-anchor="middle">-0.3%</text>
+  </g>
+
+  <!-- Main Chart Card -->
+  <g filter="url(#shadow)">
+    <rect x="32" y="250" width="1372" height="690" rx="16" fill="#FFFFFF" stroke="#E4E4E7" />
+    <text x="64" y="295" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="700" fill="#18181B">Monthly Recurring Revenue Growth</text>
+    <text x="64" y="322" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="400" fill="#71717A">Historical vs predicted growth projection over the last 12 months</text>
+
+    <!-- Chart Grid Lines -->
+    <line x1="64" y1="400" x2="1372" y2="400" stroke="#F4F4F5" stroke-width="1.5" />
+    <line x1="64" y1="520" x2="1372" y2="520" stroke="#F4F4F5" stroke-width="1.5" />
+    <line x1="64" y1="640" x2="1372" y2="640" stroke="#F4F4F5" stroke-width="1.5" />
+    <line x1="64" y1="760" x2="1372" y2="760" stroke="#F4F4F5" stroke-width="1.5" />
+
+    <!-- Chart Area Fill -->
+    <path d="M64 760 L140 710 L260 725 L380 660 L500 620 L620 635 L740 540 L860 480 L980 430 L1100 390 L1220 340 L1340 310 L1340 760 Z" fill="url(#primaryGrad)" />
+
+    <!-- Chart Smooth Line -->
+    <path d="M64 760 L140 710 L260 725 L380 660 L500 620 L620 635 L740 540 L860 480 L980 430 L1100 390 L1220 340 L1340 310" stroke="#2563EB" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+
+    <!-- Active Dot & Tooltip -->
+    <circle cx="1220" cy="340" r="7" fill="#2563EB" stroke="#FFFFFF" stroke-width="3" />
+    <rect x="1140" y="270" width="160" height="52" rx="8" fill="#18181B" />
+    <text x="1220" y="294" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="500" fill="#A1A1AA" text-anchor="middle">May 2026</text>
+    <text x="1220" y="312" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">$142,890 MRR</text>
+  </g>
+</svg>

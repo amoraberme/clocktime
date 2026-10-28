@@ -1,0 +1,23 @@
+{
+  "name": "offline-site-archiver",
+  "version": "1.0.0",
+  "description": "Universal stack-adaptive offline website archiver and local preview server",
+  "main": "server.js",
+  "scripts": {
+    "archive": "node archive-site.js",
+    "start": "node server.js",
+    "test": "node test-server.js"
+  },
+  "keywords": [
+    "offline-archive",
+    "scraper",
+    "preview-server",
+    "live-reload"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cheerio": "^1.2.0"
+  }
+}
