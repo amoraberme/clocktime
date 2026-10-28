@@ -135,6 +135,32 @@ function resolveFilePath(reqUrl) {
   const parsed = new URL(reqUrl, 'http://localhost');
   let pathname = decodeURIComponent(parsed.pathname || '/');
 
+  // Strip Next.js RSC router prefetch paths
+  if (pathname.includes('__next._tree.txt')) {
+    pathname = pathname.replace(/\/__next\._tree\.txt.*/, '');
+    if (!pathname || pathname === '') pathname = '/';
+  }
+
+  // Semantic route aliases
+  const routeAliases = {
+    '/docs': '/docs.html',
+    '/vs/spreadsheets': '/vs/spreadsheets.html',
+    '/vs/biometric-clocks': '/vs/biometric-clocks.html',
+    '/vs/foreign-apps': '/vs/foreign-apps.html',
+    '/vs/legacy-payroll': '/vs/legacy-payroll.html',
+    '/vs/enterprise-hris': '/vs/enterprise-hris.html',
+    '/vs/google-analytics': '/vs/spreadsheets.html',
+    '/vs/plausible': '/vs/biometric-clocks.html',
+    '/vs/fathom': '/vs/foreign-apps.html',
+    '/vs/mixpanel': '/vs/legacy-payroll.html',
+    '/vs/posthog': '/vs/enterprise-hris.html',
+  };
+  if (routeAliases[pathname]) {
+    pathname = routeAliases[pathname];
+  } else if (pathname.startsWith('/demo/')) {
+    pathname = '/pricing.html';
+  }
+
   // If path is root
   if (pathname === '/' || pathname === '') {
     return path.join(DIST_DIR, 'index.html');
@@ -179,6 +205,41 @@ function resolveFilePath(reqUrl) {
  */
 function handleRequest(req, res) {
   const reqUrl = req.url || '/';
+  const parsed = new URL(reqUrl, 'http://localhost');
+
+  // Handle Next.js App Router RSC prefetch requests
+  const isRsc = reqUrl.includes('__next._tree.txt') || parsed.searchParams.has('_rsc') || req.headers['rsc'] === '1';
+  if (isRsc) {
+    const resolved = resolveFilePath(reqUrl);
+    if (resolved && (resolved.endsWith('.html') || resolved.endsWith('.htm'))) {
+      try {
+        const html = fs.readFileSync(resolved, 'utf8');
+        const rscMatches = html.match(/self\.__next_f\.push\(\[1,\s*"([\s\S]*?)"\]\)/g) || [];
+        let rscPayload = '';
+        for (const m of rscMatches) {
+          const inner = m.match(/self\.__next_f\.push\(\[1,\s*"([\s\S]*?)"\]\)/);
+          if (inner && inner[1]) {
+            try {
+              rscPayload += JSON.parse('"' + inner[1] + '"');
+            } catch(e) {
+              rscPayload += inner[1];
+            }
+          }
+        }
+        res.writeHead(200, {
+          'Content-Type': 'text/x-component; charset=utf-8',
+          'Vary': 'RSC, Next-Router-State-Tree, Next-Router-Prefetch',
+          'Cache-Control': 'no-cache'
+        });
+        res.end(rscPayload);
+        return;
+      } catch (err) {
+        res.writeHead(204, { 'Content-Type': 'text/x-component; charset=utf-8' });
+        res.end();
+        return;
+      }
+    }
+  }
 
   // Handle SSE endpoint
   if (reqUrl === '/__live_reload') {
