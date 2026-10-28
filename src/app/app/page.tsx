@@ -190,7 +190,7 @@ export default async function DashboardPage({
                   <li key={i.label}>
                     <Link
                       href={i.href}
-                      className="hover:bg-muted flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                      className="flex items-center justify-between rounded-xl border border-border/80 px-3.5 py-2.5 text-sm transition-colors hover:bg-muted/70"
                     >
                       <span>
                         <span className="font-semibold">{i.count}</span> {i.label}
@@ -268,7 +268,7 @@ export default async function DashboardPage({
                             ))}
                           </div>
                         ))}
-                        <div className="bg-danger absolute inset-y-0 w-px" style={{ left: `${pct(now)}%` }} />
+                        <div className="bg-destructive absolute inset-y-0 w-px" style={{ left: `${pct(now)}%` }} />
                       </div>
                     </div>
                   ))}

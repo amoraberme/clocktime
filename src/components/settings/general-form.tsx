@@ -63,7 +63,7 @@ export function GeneralForm({
           </div>
         </CardContent>
         <CardFooter className="flex items-center justify-between">
-          <span className="text-xs text-zinc-500">Changes apply to all branches and reports</span>
+          <span className="text-xs text-muted-foreground">Changes apply to all branches and reports</span>
           <Button disabled={busy} size="sm">Save changes</Button>
         </CardFooter>
       </form>

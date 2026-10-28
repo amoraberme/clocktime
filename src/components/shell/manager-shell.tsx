@@ -52,7 +52,7 @@ export function ManagerShell({
           <Logo />
         </Link>
         <button
-          className="rounded-lg p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 lg:hidden"
+          className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
           onClick={() => setOpen(false)}
           aria-label="Close menu"
         >
@@ -72,20 +72,20 @@ export function ManagerShell({
               className={cn(
                 "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
                 active
-                  ? "bg-zinc-100 text-zinc-950 font-semibold"
-                  : "text-zinc-600 hover:bg-zinc-100/70 hover:text-zinc-950",
+                  ? "bg-muted font-semibold text-foreground shadow-2xs"
+                  : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
               )}
             >
               <Icon
                 className={cn(
                   "size-4 shrink-0 transition-colors",
-                  active ? "text-blue-600" : "text-zinc-500 group-hover:text-zinc-900",
+                  active ? "text-primary" : "text-muted-foreground group-hover:text-foreground",
                 )}
               />
               <span className="flex-1 truncate">{item.label}</span>
-              {item.locked ? <Lock className="size-3.5 text-zinc-400 opacity-70" /> : null}
+              {item.locked ? <Lock className="size-3.5 text-muted-foreground/60" /> : null}
               {item.badge ? (
-                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
                   {item.badge}
                 </span>
               ) : null}
@@ -93,48 +93,48 @@ export function ManagerShell({
           );
         })}
       </div>
-      <div className="mt-auto space-y-1 border-t border-zinc-200/80 pt-3">
+      <div className="mt-auto space-y-1 border-t border-border/80 pt-3">
         <Link
           href="/me"
-          className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100/70 hover:text-zinc-950"
+          className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
         >
-          <Smartphone className="size-4 text-zinc-500" /> My clock
+          <Smartphone className="size-4 text-muted-foreground" /> My clock
         </Link>
       </div>
     </nav>
   );
 
   return (
-    <div className="flex min-h-dvh bg-zinc-50/50">
-      <aside className="fixed inset-y-0 left-0 hidden w-60 border-r border-zinc-200/80 bg-white lg:block">
+    <div className="flex min-h-dvh bg-muted/20">
+      <aside className="fixed inset-y-0 left-0 hidden w-60 border-r border-border/80 bg-background lg:block">
         {sidebar}
       </aside>
       {open ? (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-xs" onClick={() => setOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 w-64 border-r border-zinc-200/80 bg-white shadow-xl">
+          <aside className="absolute inset-y-0 left-0 w-64 border-r border-border/80 bg-background shadow-xl">
             {sidebar}
           </aside>
         </div>
       ) : null}
       <div className="flex min-w-0 flex-1 flex-col lg:pl-60">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-zinc-200/80 bg-white/95 px-4 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border/80 bg-background/95 px-4 backdrop-blur sm:px-6">
           <button
-            className="rounded-lg p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 lg:hidden"
+            className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
             onClick={() => setOpen(true)}
             aria-label="Open menu"
           >
             <Menu className="size-5" />
           </button>
-          <div className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-900">
+          <div className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
             {companyName}{" "}
-            <span className="ml-1.5 inline-flex items-center rounded-full border border-blue-200/70 bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+            <span className="ml-1.5 inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
               {planLabel}
             </span>
           </div>
           <Dropdown>
-            <DropdownTrigger className="flex cursor-pointer items-center gap-2 rounded-xl p-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
-              <span className="inline-flex size-7 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white shadow-xs">
+            <DropdownTrigger className="flex cursor-pointer items-center gap-2 rounded-xl p-1.5 text-sm font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground">
+              <span className="inline-flex size-7 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground shadow-xs">
                 {userName.charAt(0).toUpperCase()}
               </span>
               <span className="hidden max-w-40 truncate sm:inline">{userName}</span>

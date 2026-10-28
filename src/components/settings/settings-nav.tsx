@@ -24,7 +24,10 @@ export function SettingsNav({ isAdmin, hidden = [] }: { isAdmin: boolean; hidden
   const pathname = usePathname();
   const items = ITEMS.filter((i) => (isAdmin || i.hr) && !hidden.includes(i.href));
   return (
-    <nav className="-mx-1 mb-8 flex gap-1 overflow-x-auto border-b border-zinc-200/80 px-1">
+    <nav
+      data-slot="settings-nav"
+      className="-mx-1 mb-8 flex gap-1 overflow-x-auto border-b border-border/80 px-1"
+    >
       {items.map((i) => {
         const active = i.href === "/app/settings" ? pathname === i.href : pathname.startsWith(i.href);
         return (
@@ -35,8 +38,8 @@ export function SettingsNav({ isAdmin, hidden = [] }: { isAdmin: boolean; hidden
             className={cn(
               "-mb-px border-b-2 px-3.5 py-2.5 text-sm whitespace-nowrap transition-colors",
               active
-                ? "border-blue-600 font-semibold text-zinc-950"
-                : "border-transparent font-medium text-zinc-500 hover:border-zinc-300 hover:text-zinc-800",
+                ? "border-primary font-semibold text-foreground"
+                : "border-transparent font-medium text-muted-foreground hover:border-border hover:text-foreground",
             )}
           >
             {i.label}

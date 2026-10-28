@@ -72,11 +72,11 @@ export function SettingsForm({
                 return (
                   <label
                     key={f.key}
-                    className="flex items-start justify-between gap-4 rounded-xl border border-zinc-200/80 bg-zinc-50/40 p-4 text-sm sm:col-span-2 transition-colors hover:bg-zinc-50/80"
+                    className="flex items-start justify-between gap-4 rounded-xl border border-border/80 bg-muted/30 p-4 text-sm sm:col-span-2 transition-colors hover:bg-muted/50"
                   >
                     <span>
-                      <span className="font-semibold text-zinc-900">{f.label}</span>
-                      {f.hint ? <span className="mt-1 block text-xs text-zinc-500 leading-normal">{f.hint}</span> : null}
+                      <span className="font-semibold text-foreground">{f.label}</span>
+                      {f.hint ? <span className="mt-1 block text-xs text-muted-foreground leading-normal">{f.hint}</span> : null}
                     </span>
                     <Switch
                       checked={Boolean(state[f.key])}
@@ -131,7 +131,7 @@ export function SettingsForm({
                       value={String(state[f.key] ?? "")}
                       onChange={(e) => setState({ ...state, [f.key]: Number(e.target.value) })}
                     />
-                    {f.suffix ? <span className="text-xs font-medium text-zinc-500">{f.suffix}</span> : null}
+                    {f.suffix ? <span className="text-xs font-medium text-muted-foreground">{f.suffix}</span> : null}
                   </div>
                 </Field>
               );
@@ -139,7 +139,7 @@ export function SettingsForm({
           </div>
         </CardContent>
         <CardFooter className="flex items-center justify-between">
-          <span className="text-xs text-zinc-500">Changes take effect immediately</span>
+          <span className="text-xs text-muted-foreground">Changes take effect immediately</span>
           <Button disabled={busy} size="sm">Save changes</Button>
         </CardFooter>
       </form>

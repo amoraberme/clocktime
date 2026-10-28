@@ -4,17 +4,31 @@ import { DropdownMenu as M } from "radix-ui";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-export const Dropdown = M.Root;
-export const DropdownTrigger = M.Trigger;
+export const DropdownMenu = M.Root;
+export const DropdownMenuTrigger = M.Trigger;
+export const DropdownMenuGroup = M.Group;
+export const DropdownMenuPortal = M.Portal;
+export const DropdownMenuSub = M.Sub;
+export const DropdownMenuRadioGroup = M.RadioGroup;
 
-export function DropdownContent({ className, ...props }: React.ComponentProps<typeof M.Content>) {
+// Backwards-compatible aliases
+export const Dropdown = DropdownMenu;
+export const DropdownTrigger = DropdownMenuTrigger;
+
+export function DropdownMenuContent({
+  className,
+  sideOffset = 6,
+  align = "end",
+  ...props
+}: React.ComponentProps<typeof M.Content>) {
   return (
     <M.Portal>
       <M.Content
-        sideOffset={6}
-        align="end"
+        data-slot="dropdown-menu-content"
+        sideOffset={sideOffset}
+        align={align}
         className={cn(
-          "z-50 min-w-48 rounded-xl border border-zinc-200/80 bg-white p-1.5 text-zinc-900 shadow-lg",
+          "z-50 min-w-48 overflow-hidden rounded-xl border border-border/80 bg-popover p-1.5 text-popover-foreground shadow-lg duration-100 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
           className,
         )}
         {...props}
@@ -22,25 +36,56 @@ export function DropdownContent({ className, ...props }: React.ComponentProps<ty
     </M.Portal>
   );
 }
+export const DropdownContent = DropdownMenuContent;
 
-export function DropdownItem({ className, ...props }: React.ComponentProps<typeof M.Item>) {
+export function DropdownMenuItem({
+  className,
+  inset,
+  ...props
+}: React.ComponentProps<typeof M.Item> & { inset?: boolean }) {
   return (
     <M.Item
+      data-slot="dropdown-menu-item"
       className={cn(
-        "flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-zinc-700 outline-none select-none transition-colors data-[highlighted]:bg-zinc-100 data-[highlighted]:text-zinc-950 [&_svg]:size-4",
+        "relative flex cursor-pointer select-none items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 outline-none transition-colors data-[disabled]:pointer-events-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+        inset && "pl-8",
         className,
       )}
       {...props}
     />
   );
 }
+export const DropdownItem = DropdownMenuItem;
 
-export function DropdownLabel({ className, ...props }: React.ComponentProps<typeof M.Label>) {
+export function DropdownMenuLabel({
+  className,
+  inset,
+  ...props
+}: React.ComponentProps<typeof M.Label> & { inset?: boolean }) {
   return (
-    <M.Label className={cn("px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-400", className)} {...props} />
+    <M.Label
+      data-slot="dropdown-menu-label"
+      className={cn(
+        "px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground",
+        inset && "pl-8",
+        className,
+      )}
+      {...props}
+    />
   );
 }
+export const DropdownLabel = DropdownMenuLabel;
 
-export function DropdownSeparator() {
-  return <M.Separator className="my-1 h-px bg-zinc-100" />;
+export function DropdownMenuSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof M.Separator>) {
+  return (
+    <M.Separator
+      data-slot="dropdown-menu-separator"
+      className={cn("-mx-1 my-1 h-px bg-border/60", className)}
+      {...props}
+    />
+  );
 }
+export const DropdownSeparator = DropdownMenuSeparator;

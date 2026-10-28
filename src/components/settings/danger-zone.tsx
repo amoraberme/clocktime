@@ -7,11 +7,12 @@ import { deleteCompanyAction } from "@/app/app/settings/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 
 export function DangerZone({ companyName, isOwner }: { companyName: string; isOwner: boolean }) {
   const [name, setName] = useState("");
   return (
-    <Card className="border-danger/30">
+    <Card className="border-destructive/30">
       <CardHeader>
         <CardTitle>Your data</CardTitle>
       </CardHeader>
@@ -27,8 +28,9 @@ export function DangerZone({ companyName, isOwner }: { companyName: string; isOw
           </Button>
         </div>
         {isOwner ? (
-          <div className="space-y-2 border-t pt-4">
-            <p className="text-danger font-medium">Delete company</p>
+          <div className="space-y-3">
+            <Separator />
+            <p className="font-semibold text-destructive">Delete company</p>
             <p className="text-muted-foreground">
               Permanently deletes {companyName} and all its data. This can&apos;t be undone. Export first.
             </p>
@@ -41,7 +43,7 @@ export function DangerZone({ companyName, isOwner }: { companyName: string; isOw
                 className="max-w-xs"
               />
               <Button
-                variant="danger"
+                variant="destructive"
                 disabled={name !== companyName}
                 onClick={async () => {
                   const r = await deleteCompanyAction(name);
