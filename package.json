@@ -42,6 +42,7 @@
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
     "@react-pdf/renderer": "^4.9.0",
+    "@sentry/nextjs": "^11.10.0",
     "@zxing/browser": "^0.2.1",
     "better-auth": "1.7.14",
     "class-variance-authority": "^0.7.1",
