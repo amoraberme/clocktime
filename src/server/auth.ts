@@ -7,15 +7,24 @@ import { dash } from "@better-auth/infra";
 import { prisma } from "./db";
 import { layout, sendEmail } from "./email";
 
+// A live deployment never trusts localhost origins: they are only added when the app
+// itself runs on a loopback address (dev, tests, the local production copy).
+const baseURL = process.env.APP_URL ?? "http://localhost:3000";
+const onLoopback = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(baseURL);
+
 export const auth = betterAuth({
   appName: "ClockTime",
-  baseURL: process.env.APP_URL ?? "http://localhost:3000",
+  baseURL,
   trustedOrigins: [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:3001",
-    ...(process.env.APP_URL ? [process.env.APP_URL] : []),
+    baseURL,
+    ...(onLoopback
+      ? [
+          "http://localhost:3000",
+          "http://localhost:3001",
+          "http://127.0.0.1:3000",
+          "http://127.0.0.1:3001",
+        ]
+      : []),
   ],
   secret: process.env.BETTER_AUTH_SECRET,
   database: prismaAdapter(prisma, { provider: "postgresql" }),
