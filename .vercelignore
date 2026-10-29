@@ -1,0 +1,12 @@
+# Excluded from Vercel deployments: nothing the Next.js build or runtime needs.
+# resotemp/ stays deployable on purpose — only its heavy artifacts are excluded.
+.github
+.cursor
+.vscode
+docs
+storage
+tests
+playwright-report
+test-results
+resotemp/node_modules
+resotemp/dist
