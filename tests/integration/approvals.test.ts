@@ -100,10 +100,11 @@ describe("requests and approvals", () => {
       orderBy: { clockInAt: "asc" },
     });
     expect(stale!.flags).toContain("MISSING_OUT");
+    const targetOut = ago(21);
     const req = await requestCorrection(t.as.employee, {
       kind: "MISSING_OUT",
       timeEntryId: stale!.id,
-      clockOut: toLocalDateTimeInput(ago(21), TZ),
+      clockOut: toLocalDateTimeInput(targetOut, TZ),
       reason: "Terminal was down when I left",
     });
     // Timekeepers handle attendance corrections.
@@ -112,7 +113,7 @@ describe("requests and approvals", () => {
       where: { employeeId: t.emp.id },
       orderBy: { clockInAt: "asc" },
     });
-    expect(entries[0]!.clockOutAt).toEqual(ago(21));
+    expect(entries[0]!.clockOutAt).toEqual(targetOut);
     expect(entries[0]!.flags).not.toContain("MISSING_OUT");
     expect(entries[0]!.outSource).toBe("CORRECTION");
     const open = await prisma.timeException.count({
@@ -128,16 +129,17 @@ describe("requests and approvals", () => {
     await tap(ago(10));
     await tap(ago(2));
     const [entry] = await prisma.timeEntry.findMany({ where: { employeeId: t.emp.id } });
+    const targetIn = ago(11);
     const req = await requestCorrection(t.as.employee, {
       kind: "WRONG_TIME",
       timeEntryId: entry!.id,
-      clockIn: toLocalDateTimeInput(ago(11), TZ),
+      clockIn: toLocalDateTimeInput(targetIn, TZ),
       reason: "I tapped late because of a queue",
     });
     await decideCorrection(t.as.hr, req.id, true);
     const [fixed, ...rest] = await prisma.timeEntry.findMany({ where: { employeeId: t.emp.id } });
     expect(rest).toHaveLength(0);
-    expect(fixed!.clockInAt).toEqual(ago(11));
+    expect(fixed!.clockInAt).toEqual(targetIn);
     expect(fixed!.clockOutAt).toEqual(ago(2));
     expect(await prisma.punch.count({ where: { employeeId: t.emp.id, voidedAt: { not: null } } })).toBe(1);
   });

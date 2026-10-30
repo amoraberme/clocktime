@@ -1,0 +1,5 @@
+# Gitleaks baseline ignore list
+# These entries are dummy example/test encryption keys in commit history
+093885672c7b8e903e9c1da3c959ad299604628f:.env.prod.example:generic-api-key:19
+2b25ba5c87a18567c5d368d4ee02eef38b82c713:.github/workflows/ci.yml:generic-api-key:25
+2b25ba5c87a18567c5d368d4ee02eef38b82c713:.env.example:generic-api-key:8
